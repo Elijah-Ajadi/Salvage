@@ -1,0 +1,16 @@
+import fs from 'node:fs';
+let s=fs.readFileSync('app/salvage.tsx','utf8');
+s=s.replace('export default function Salvage(){','export default function Salvage({mode,initialAccount}:{mode:string;initialAccount:any}){');
+s=s.replace('useState(initialProfile)','useState({...initialProfile,...initialAccount})');
+s=s.replace("[registered,setRegistered]=useState(false),[view,setView]=useState('Explore')","[registered,setRegistered]=useState(true),[view,setView]=useState(mode==='contractor'?'My listings':'Explore')");
+s=s.replace("['Explore','My pickups','My listings'].map","(mode==='contractor'?['My listings']:['Explore','My pickups']).map");
+s=s.replace('<button className="primary add-top" onClick={openAdd}><Plus size={19}/> Add item</button>',`<a className="signout-link" href="/signout-with-chatgpt?return_to=%2Flogin" target="_top">Log out</a>{mode==='contractor'&&<button className="primary add-top" onClick={openAdd}><Plus size={19}/> Add item</button>}`);
+s=s.replace('THE LOCAL MATERIAL EXCHANGE',`{mode==='contractor'?'YOUR CONTRACTOR WORKSPACE':'THE LOCAL MATERIAL EXCHANGE'}`);
+s=s.replace('<div className="strip-right"><span>Have something to pass on?</span><button onClick={openAdd}>List it in seconds <ArrowUpRight size={18}/></button></div>',`<div className="strip-right"><button onClick={()=>setModal('profile')}>Your buyer preferences <ArrowUpRight size={18}/></button></div>`);
+s=s.replace('<div className="intro-strip">',`{mode==='contractor'?<div className="contractor-action"><div><span className="contractor-camera"><Camera size={28}/></span><h2>Out with the old.<br/>On to its next project.</h2><p>Take a photo. Confirm the details. We’ll find it a new home.</p></div><button className="primary" onClick={openAdd}><Plus size={22}/> Add an item</button></div>:<div className="intro-strip">`);
+s=s.replace('</button></div></div>\n  <div className="search-row">','</button></div></div>}\n  <div className="search-row">');
+s=s.replace('<button className="mobile-add primary" onClick={openAdd}><Plus size={22}/> Add item</button>',`{mode==='contractor'&&<button className="mobile-add primary" onClick={openAdd}><Plus size={22}/> Add item</button>}`);
+s=s.replace('<Tabs value={profile.role} onValueChange={v=>setProfile({...profile,role:v})}><TabsList className="role-tabs"><TabsTrigger value="buyer">I’m a buyer</TabsTrigger><TabsTrigger value="contractor">I’m a contractor</TabsTrigger></TabsList></Tabs>',`<div className="account-role"><Check size={17}/> {mode==='contractor'?'Contractor':'Buyer'} account</div>`);
+s=s.replace("else setView('Explore');","else if(mode==='contractor')openAdd();else setView('Explore');");
+s=s.replace("view==='Explore'?'Adjust search area':'Explore materials'","view==='Explore'?'Adjust search area':mode==='contractor'?'List your first item':'Explore materials'");
+fs.writeFileSync('app/salvage.tsx',s);
