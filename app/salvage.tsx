@@ -42,6 +42,7 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
 
  // Earnings & Withdrawal state (Contractor)
  const [earnings,setEarnings]=useState<{
+   testMode?:boolean;
    totalEarned:number;
    totalWithdrawn:number;
    pendingWithdrawal:number;
@@ -60,6 +61,7 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
  // Payment & Claim History state (Buyer)
  const [buyerHistory,setBuyerHistory]=useState<any[]>([]);
 
+ const withdrawalKey=useRef<string|null>(null);
  const editing=useRef(false); 
  editing.current=!!modal;
  const notify=(s:string)=>setMessage(s);
@@ -116,6 +118,7 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
  useEffect(()=>{
    const p=new URLSearchParams(window.location.search);
    const sid=p.get('session');
+   if(p.get('payment')==='cancelled'&&p.get('order')){fetch('/api/payments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'cancel-checkout',orderId:p.get('order')})}).then(async r=>{const d=await r.json();notify(r.ok?'Checkout cancelled. The item is available again.':d.error);}).catch(()=>notify('Could not cancel checkout. Its reservation will expire automatically.'));window.history.replaceState({},'',window.location.pathname);}
    if(p.get('payment')==='success'&&sid){
      setCheckingPayment(true);
      window.history.replaceState({},'',window.location.pathname);
@@ -271,51 +274,19 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
      const r=await fetch('/api/payments',{
        method:'POST',
        headers:{'Content-Type':'application/json'},
-       body:JSON.stringify({action:'request-payout',...withdrawalDraft})
+       body:JSON.stringify({action:'request-payout',...withdrawalDraft,requestKey:withdrawalKey.current||(withdrawalKey.current=crypto.randomUUID())})
      });
      const d:any=await r.json();
      if(!r.ok)throw Error(d.error||'Failed to submit withdrawal request.');
-     notify('Withdrawal request submitted! We will process your payout shortly.');
+     withdrawalKey.current=null;
+     notify(d.testMode?'Demo withdrawal completed. No real money was transferred.':'Withdrawal request saved for manual processing. No transfer has been made yet.');
      setModal('');
      setWithdrawalDraft({amount:'',paymentMethod:'Bank Transfer (ACH)',accountDetails:'',notes:''});
      await fetchEarnings();
    }catch(e:any){notify(e.message);}finally{setBusy(false);}
  }
 
- function showBuyerReceipt(item:any){
-   const isPaid=Number(item.price)>0;
-   const receiptData:ReceiptData={
-     receiptNumber:isPaid?`REC-${(item.stripe_session_id||item.id).slice(-8).toUpperCase()}`:`CLM-${item.id.slice(0,8).toUpperCase()}`,
-     type:isPaid?'purchase':'claim',
-     date:new Date(item.created_at).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}),
-     item:{
-       id:item.id,
-       title:item.title,
-       category:item.category,
-       material:item.material,
-       condition:item.condition,
-       address:item.address
-     },
-     buyer:{
-       name:profile.name||'Buyer',
-       email:profile.email,
-       phone:profile.phone
-     },
-     seller:{
-       name:item.seller?.name||item.owner_name||'Contractor',
-       email:item.seller?.email||'',
-       phone:item.seller?.phone||''
-     },
-     payment:{
-       amount:Number(item.price)||0,
-       currency:'usd',
-       method:isPaid?'Credit / Debit Card (Stripe)':'Free Salvage Claim',
-       transactionId:item.stripe_session_id||undefined,
-       status:'Confirmed'
-     }
-   };
-   openReceiptWindow(receiptData);
- }
+ async function showBuyerReceipt(item:any){try{const r=await fetch('/api/payments?type=receipt&listingId='+encodeURIComponent(item.id));const d=await r.json();if(!r.ok)throw Error(d.error);openReceiptWindow(d.receipt);}catch(e:any){notify(e.message);}}
 
  const filtered=items.filter(i=>(view==='My listings'?i.mine:view==='My pickups'?i.claimedMine:i.status==='available')&&(category==='All materials'||i.category===category)&&`${i.title} ${i.material} ${i.description}`.toLowerCase().includes(search.toLowerCase())&&(view!=='Explore'||distance(profile,i)<=profile.radius)).sort((a,b)=>sort==='newest'?b.created_at-a.created_at:distance(profile,a)-distance(profile,b));
  const openAdd=()=>{if(!registered||profile.role!=='contractor'){setModal('profile');setProfile(v=>({...v,role:'contractor'}));notify('Save your contractor profile once, then start listing.');}else{setDraft({...blank,address:profile.address,lat:profile.lat,lng:profile.lng});setAiNote('');setAiProgress(0);setModal('add');location('draft');}};
@@ -352,7 +323,7 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
        <p>
          {view==='Explore'?'Find reusable building materials around the corner. Save them from the dumpster.'
            :view==='My listings'?"Everything you've put back to work, in one place."
-           :view==='Earnings & Payouts'?'Track your salvage sales earnings and request withdrawals to your account.'
+           :view==='Earnings & Payouts'?(earnings.testMode?'Stripe test mode: earnings and withdrawals are simulated. No real money moves.':'Track confirmed sales and request a withdrawal for manual processing.')
            :view==='Payment History'?'View your paid orders and verified free claim receipts for pickup.'
            :'Arrange a pickup and give these materials a new home.'}
        </p>
@@ -466,7 +437,7 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
                    <td style={{padding:'16px 20px',borderBottom:'1px solid #edf1e8',color:'#5b6752'}}>{new Date(p.created_at).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})}</td>
                    <td style={{padding:'16px 20px',borderBottom:'1px solid #edf1e8'}}><strong>{p.payment_method}</strong></td>
                    <td style={{padding:'16px 20px',borderBottom:'1px solid #edf1e8'}}><code style={{fontSize:'12px',background:'#f0f2eb',padding:'4px 8px',borderRadius:'5px',color:'#354526'}}>{p.account_details}</code></td>
-                   <td style={{padding:'16px 20px',borderBottom:'1px solid #edf1e8'}}><span className={`status-pill ${p.status}`}>{p.status}</span></td>
+                   <td style={{padding:'16px 20px',borderBottom:'1px solid #edf1e8'}}><span className={`status-pill ${p.status}`}>{!p.livemode?'Demo completed':p.status}</span></td>
                    <td style={{padding:'16px 20px',borderBottom:'1px solid #edf1e8',textAlign:'right',fontWeight:700,fontSize:'15px'}}>${Number(p.amount).toFixed(2)}</td>
                  </tr>
                ))}
@@ -606,7 +577,7 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
       {modal==='add'?'One photo. A few details. Out of the dumpster.'
         :modal==='notifications'?'New matches and pickup activity appear here.'
         :modal==='donate'?'Save the details and download a donation record.'
-        :modal==='withdraw'?'Withdraw your available salvage earnings to your bank or payment account.'
+        :modal==='withdraw'?(earnings.testMode?'Demo withdrawal: no real money will move. Use sample account details.':'Submit a withdrawal request for manual processing. This does not transfer funds automatically.')
         :modal==='profile'?'Set this up once. Get back to the job.'
         :'Find materials close enough to collect.'}
     </DialogDescription>

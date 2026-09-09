@@ -1,4 +1,4 @@
-import {readFile} from 'node:fs/promises';
+import {readFile,readdir} from 'node:fs/promises';
 const url=new URL(process.env.NEXT_PUBLIC_SUPABASE_URL);
 const token=process.env.SUPABASE_ACCESS_TOKEN;
 if(!token||!/^([a-z0-9]+)\.supabase\.co$/.test(url.hostname))throw Error('Supabase project URL and access token are required.');
@@ -8,7 +8,7 @@ const rows=await query("select tablename from pg_catalog.pg_tables where scheman
 console.log('Existing application tables:',rows.map(r=>r.tablename).join(', ')||'none');
 if(process.argv.includes('--check'))process.exit(0);
 if(rows.length){throw Error('Application tables already exist. Stopped without changing existing schema or records.');}
-const sql=(await readFile('supabase/migrations/202609090001_salvage.sql','utf8'))+'\n'+(await readFile('supabase/migrations/202609090002_optional_profile_coordinates.sql','utf8'));
+const sql=(await Promise.all((await readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')).sort().map(f=>readFile('supabase/migrations/'+f,'utf8')))).join('\n');
 await query(`BEGIN;\n${sql}\nNOTIFY pgrst, 'reload schema';\nCOMMIT;`,false);
 console.log('Salvage schema installed. Existing authentication accounts and photo bucket were preserved.');
 

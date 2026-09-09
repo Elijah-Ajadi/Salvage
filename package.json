@@ -12,7 +12,7 @@
     "lint": "oxlint",
     "format": "oxfmt",
     "typecheck": "tsc --noEmit",
-    "test": "node scripts/test-database.mjs",
+    "test": "node scripts/test-database.mjs && node scripts/test-payments.mjs && node scripts/test-security.mjs",
     "check:env": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/check-env.mjs",
     "setup:smtp": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/configure-smtp.mjs"
   },

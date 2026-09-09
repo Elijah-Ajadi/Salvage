@@ -1,4 +1,6 @@
-import {type Item} from './materials';
+export function escapeHTML(value:unknown):string {
+  return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
+}
 
 export interface ReceiptData {
   receiptNumber: string;
@@ -28,13 +30,18 @@ export interface ReceiptData {
     method: string;
     transactionId?: string;
     status: string;
+    refundedAmount?: number;
+    test?: boolean;
   };
 }
 
 export function generateReceiptHTML(data: ReceiptData): string {
+  // Escape every externally supplied string before interpolation, including optional fields.
+  const escapeFields=(value:any):any=>typeof value==='string'?escapeHTML(value):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([k,v])=>[k,escapeFields(v)])):value;
+  data=escapeFields(data);
   const isPaid = data.type === 'purchase' && data.payment.amount > 0;
   const titleText = isPaid ? 'OFFICIAL PAYMENT RECEIPT' : 'CLAIM CONFIRMATION & PICKUP PASS';
-  const badgeText = isPaid ? 'PAID IN FULL' : 'FREE CLAIM CONFIRMED';
+  const badgeText = data.payment.test ? 'TEST PAYMENT — NO REAL MONEY' : isPaid ? (data.payment.refundedAmount ? 'PARTIALLY REFUNDED' : 'PAID IN FULL') : 'FREE CLAIM CONFIRMED';
   const badgeColor = isPaid ? '#2d5a27' : '#315485';
   const badgeBg = isPaid ? '#eaf5e6' : '#eaf0f9';
 
@@ -256,6 +263,7 @@ export function generateReceiptHTML(data: ReceiptData): string {
   </div>
 
   <h2 class="doc-title">${titleText}</h2>
+  <p>${data.payment.method} · ${data.payment.status}${data.payment.refundedAmount ? ` · Refunded: $${data.payment.refundedAmount.toFixed(2)}` : ''}</p>
   <p class="doc-sub">${isPaid ? 'Thank you for your purchase. Please retain this receipt for your pickup appointment.' : 'This document serves as your verified claim ticket for item pickup.'}</p>
 
   <div class="grid">
@@ -333,8 +341,14 @@ export function openReceiptWindow(data: ReceiptData) {
   const html = generateReceiptHTML(data);
   const win = window.open('', '_blank');
   if (win) {
+    win.opener = null;
     win.document.open();
     win.document.write(html);
     win.document.close();
+  } else {
+    // Automatic receipts may be opened after a network response; provide a download when popups are blocked.
+    const url=URL.createObjectURL(new Blob([html],{type:'text/html'}));
+    const link=document.createElement('a');link.href=url;link.download='salvage-receipt.html';link.click();
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
   }
 }

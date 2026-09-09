@@ -5,3 +5,7 @@ for(const key of baseRequired)console.log(`${key}: ${missing.includes(key)?'miss
 console.log(`VISION_API_KEY (GEMINI or OPENAI): ${hasVisionKey?'configured ('+(process.env.GEMINI_API_KEY?'GEMINI_API_KEY':'OPENAI_API_KEY')+')':'missing'}`);
 if(process.env.NEXT_PUBLIC_SUPABASE_URL){try{const url=new URL(process.env.NEXT_PUBLIC_SUPABASE_URL);if(url.protocol!=='https:')throw Error();}catch{console.error('Supabase URL must be a valid HTTPS URL.');process.exitCode=1;}}
 if(missing.length||!hasVisionKey)process.exitCode=1;
+for(const key of ['STRIPE_SECRET_KEY','STRIPE_WEBHOOK_SECRET','NEXT_PUBLIC_APP_URL']){
+ console.log(`${key}: ${process.env[key]?.trim()?'configured':'missing'}`);
+ if(!process.env[key]?.trim())process.exitCode=1;
+}

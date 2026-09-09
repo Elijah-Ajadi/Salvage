@@ -1,281 +1,98 @@
 import {getUser} from '@/lib/auth';
 import {admin} from '@/lib/supabase/server';
-import {bindings} from '@/lib/server';
-import Stripe from 'stripe';
-
+import {stripeClient,paymentMode,appOrigin,fulfillCheckout,receiptFor} from '@/lib/payments';
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
-function fail(message:string,status=400){return Response.json({error:message},{status});}
+export const maxDuration=60;
+const fail=(error:string,status=400)=>Response.json({error},{status});
+const uuid=(value:unknown):value is string=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
-function stripe(){
-  const key=bindings().STRIPE_SECRET_KEY;
-  if(!key)throw new Error('Stripe is not configured.');
-  return new Stripe(key,{apiVersion:'2026-08-26.dahlia'});
-}
+export async function GET(req:Request){try{
+ const user=await getUser();if(!user)return fail('Log in to continue.',401);
+ const db=admin(),type=new URL(req.url).searchParams.get('type');
+ if(type==='receipt'){
+  const id=new URL(req.url).searchParams.get('listingId');
+  if(!uuid(id))return fail('Invalid listing.');
+  return Response.json({receipt:await receiptFor(id,user.userId)});
+ }
+ if(type==='earnings'){
+  const {data:profile,error}=await db.from('users').select('role').eq('id',user.userId).maybeSingle();
+  if(error)throw error;if(profile?.role!=='contractor')return fail('Contractor access only.',403);
+  const live=paymentMode();
+  const [o,p]=await Promise.all([
+   db.from('payment_orders').select('*,listing:listings(id,title,category,material,condition),buyer:users!payment_orders_buyer_id_fkey(name,email)').eq('contractor_id',user.userId).eq('livemode',live).eq('status','paid'),
+   db.from('payout_requests').select('*').eq('contractor_id',user.userId).eq('livemode',live).order('created_at',{ascending:false})
+  ]);
+  if(o.error||p.error)throw Error('Could not load earnings.');
+  const totalEarned=(o.data||[]).reduce((s,o)=>s+(Number(o.amount_cents)-Number(o.refunded_cents))/100,0);
+  const totalWithdrawn=(p.data||[]).filter(p=>p.status==='paid').reduce((s,p)=>s+Number(p.amount),0);
+  const pendingWithdrawal=(p.data||[]).filter(p=>['pending','approved'].includes(p.status)).reduce((s,p)=>s+Number(p.amount),0);
+  return Response.json({totalEarned,totalWithdrawn,pendingWithdrawal,availableBalance:Math.max(0,Math.round((totalEarned-totalWithdrawn-pendingWithdrawal)*100)/100),
+   testMode:!live,sales:(o.data||[]).map(o=>({...o.listing,price:(Number(o.amount_cents)-Number(o.refunded_cents))/100,created_at:Date.parse(o.paid_at),buyer:o.buyer})),payouts:p.data||[]});
+ }
+ if(type==='buyer-history'){
+  const {data,error}=await db.from('listings').select('id,title,category,material,condition,price,address,created_at,claimed_at,posted_by,stripe_session_id,seller:users!listings_posted_by_fkey(name,email,phone)').eq('claimed_by',user.userId).order('claimed_at',{ascending:false});
+  if(error)throw error;return Response.json({history:data||[]});
+ }
+ return fail('Invalid history type.');
+}catch{return fail('Could not load payment information. Please try again.',503);}}
 
-export async function GET(req:Request){
-  try{
-    const user=await getUser();
-    if(!user)return fail('Log in to continue.',401);
-    const db=admin();
-    const {searchParams}=new URL(req.url);
-    const type=searchParams.get('type');
-
-    // Contractor earnings & payouts summary
-    if(type==='earnings'){
-      const {data:profile}=await db.from('users').select('role').eq('id',user.userId).maybeSingle();
-      if(profile?.role!=='contractor')return fail('Contractor access only.',403);
-
-      // Sold listings: posted by contractor, status is claimed, price > 0
-      const {data:soldListings,error:sErr}=await db.from('listings')
-        .select('id,title,category,material,condition,price,created_at,claimed_by,stripe_session_id')
-        .eq('posted_by',user.userId)
-        .eq('status','claimed');
-
-      if(sErr)return fail('Could not load earnings data.',503);
-
-      const paidListings=(soldListings||[]).filter(l=>Number(l.price)>0);
-      const totalEarned=paidListings.reduce((sum,l)=>sum+Number(l.price||0),0);
-
-      // Fetch payout requests
-      const {data:payouts,error:pErr}=await db.from('payout_requests')
-        .select('*')
-        .eq('contractor_id',user.userId)
-        .order('created_at',{ascending:false});
-
-      if(pErr)return fail('Could not load payout requests.',503);
-
-      const totalWithdrawn=(payouts||[])
-        .filter(p=>p.status==='paid'||p.status==='approved')
-        .reduce((sum,p)=>sum+Number(p.amount||0),0);
-
-      const pendingWithdrawal=(payouts||[])
-        .filter(p=>p.status==='pending')
-        .reduce((sum,p)=>sum+Number(p.amount||0),0);
-
-      const availableBalance=Math.max(0,Math.round((totalEarned-totalWithdrawn-pendingWithdrawal)*100)/100);
-
-      // Attach buyer names to paid listings for history
-      const buyerIds=[...new Set(paidListings.map(l=>l.claimed_by).filter(Boolean))];
-      let buyersMap:Record<string,{name:string;email:string}>={};
-      if(buyerIds.length){
-        const {data:bData}=await db.from('users').select('id,name,email').in('id',buyerIds);
-        (bData||[]).forEach(b=>{buyersMap[b.id]=b;});
-      }
-
-      const sales=paidListings.map(l=>({
-        ...l,
-        buyer:buyersMap[l.claimed_by]||{name:'Buyer',email:''}
-      }));
-
-      return Response.json({
-        totalEarned,
-        totalWithdrawn,
-        pendingWithdrawal,
-        availableBalance,
-        sales,
-        payouts:payouts||[]
-      });
-    }
-
-    // Buyer payment & claim history
-    if(type==='buyer-history'){
-      const {data:claimed,error}=await db.from('listings')
-        .select('id,title,category,material,condition,price,address,created_at,posted_by,stripe_session_id')
-        .eq('claimed_by',user.userId)
-        .order('created_at',{ascending:false});
-
-      if(error)return fail('Could not load order history.',503);
-
-      const contractorIds=[...new Set((claimed||[]).map(l=>l.posted_by).filter(Boolean))];
-      let contractorsMap:Record<string,{name:string;email:string;phone:string}>={};
-      if(contractorIds.length){
-        const {data:cData}=await db.from('users').select('id,name,email,phone').in('id',contractorIds);
-        (cData||[]).forEach(c=>{contractorsMap[c.id]=c;});
-      }
-
-      const history=(claimed||[]).map(l=>({
-        ...l,
-        seller:contractorsMap[l.posted_by]||{name:'Contractor',email:'',phone:''}
-      }));
-
-      return Response.json({history});
-    }
-
-    return fail('Invalid history type.');
-  }catch(e:any){
-    console.error('Payments GET error:',e);
-    return fail(e.message||'Failed to load payment information.',500);
+export async function POST(req:Request){try{
+ const origin=req.headers.get('origin');if(origin&&origin!==new URL(req.url).origin)return fail('Invalid request origin.',403);
+ const user=await getUser();if(!user)return fail('Log in to continue.',401);
+ const body=await req.json(),db=admin();
+ if(body.action==='create-checkout'){
+  if(!uuid(body.listingId))return fail('Invalid listing.');
+  if(!user.emailVerified)return fail('Verify your email before purchasing.',403);
+  if(!process.env.STRIPE_WEBHOOK_SECRET)return fail('Payments are being configured. Please try again shortly.',503);
+  const stripe=stripeClient(),base=appOrigin();
+  const {data:order,error}=await db.rpc('reserve_checkout',{p_listing:body.listingId,p_buyer:user.userId,p_live:paymentMode()});
+  if(error)return fail('This listing is unavailable or another buyer is checking out. Please try again later.',409);
+  if(order.stripe_session_id){
+   const existing=await stripe.checkout.sessions.retrieve(order.stripe_session_id);
+   if(existing.status==='open')return Response.json({url:existing.url});
+   if(existing.payment_status==='paid')return Response.json({url:`${base}/buyer?payment=success&session=${existing.id}`});
+   const updated=await db.from('payment_orders').update({status:'expired'}).eq('id',order.id).eq('status','pending');
+   if(updated.error)throw updated.error;
+   return fail('Checkout expired. Tap Buy again to start a new checkout.',409);
   }
-}
-
-export async function POST(req:Request){
-  try{
-    const user=await getUser();
-    if(!user)return fail('Log in to continue.',401);
-    const body=await req.json();
-    const {action}=body;
-    const db=admin();
-
-    if(action==='create-checkout'){
-      const {listingId}=body;
-      if(!listingId||typeof listingId!=='string')return fail('Invalid listing.');
-
-      // Fetch listing
-      const {data:listing,error}=await db.from('listings').select('*').eq('id',listingId).eq('status','available').maybeSingle();
-      if(error||!listing)return fail('Listing not found or already claimed.',404);
-      if(listing.posted_by===user.userId)return fail('You cannot purchase your own listing.');
-      const price=Number(listing.price)||0;
-      if(price<=0)return fail('This listing is free — use the claim action instead.');
-
-      // Fetch buyer profile
-      const {data:buyer}=await db.from('users').select('name,email,role').eq('id',user.userId).maybeSingle();
-      if(!buyer||buyer.role!=='buyer')return fail('A buyer account is required.',403);
-      if(!user.emailVerified)return fail('Please verify your email address before purchasing.',403);
-
-      const appUrl=process.env.NEXT_PUBLIC_APP_URL||'http://localhost:3000';
-      const stripeClient=stripe();
-      const session=await stripeClient.checkout.sessions.create({
-        mode:'payment',
-        payment_method_types:['card'],
-        line_items:[{
-          price_data:{
-            currency:'usd',
-            product_data:{
-              name:listing.title,
-              description:`${listing.category} · ${listing.condition} condition · Salvage material`,
-              metadata:{listingId},
-            },
-            unit_amount:Math.round(price*100),
-          },
-          quantity:1,
-        }],
-        metadata:{listingId,buyerId:user.userId},
-        success_url:`${appUrl}/buyer?payment=success&session={CHECKOUT_SESSION_ID}`,
-        cancel_url:`${appUrl}/buyer?payment=cancelled`,
-        customer_email:buyer.email,
-      });
-
-      // Store session id on listing temporarily
-      await db.from('listings').update({stripe_session_id:session.id}).eq('id',listingId);
-      return Response.json({url:session.url});
-    }
-
-    if(action==='verify-payment'){
-      const {sessionId}=body;
-      if(!sessionId||typeof sessionId!=='string')return fail('Invalid session.');
-      const stripeClient=stripe();
-      const session=await stripeClient.checkout.sessions.retrieve(sessionId);
-      if(session.payment_status!=='paid')return fail('Payment not completed.',402);
-      const listingId=session.metadata?.listingId;
-      const buyerId=session.metadata?.buyerId;
-      if(!listingId||!buyerId)return fail('Session metadata missing.',500);
-      if(buyerId!==user.userId)return fail('Session mismatch.',403);
-
-      // Check if already claimed
-      const {data:existing}=await db.from('listings').select('*,posted_by').eq('id',listingId).maybeSingle();
-      if(!existing)return fail('Listing not found.',404);
-      
-      let itemRecord=existing;
-      if(existing.status==='available'){
-        const {data,error}=await db.rpc('claim_listing',{listing_id:listingId,buyer_id:user.userId});
-        if(error)return fail('Could not complete the claim.',409);
-        itemRecord=data;
-      }
-
-      // Fetch seller info for receipt
-      const {data:seller}=await db.from('users').select('name,email,phone').eq('id',existing.posted_by).maybeSingle();
-      const {data:buyer}=await db.from('users').select('name,email,phone').eq('id',user.userId).maybeSingle();
-
-      return Response.json({
-        ok:true,
-        item:itemRecord,
-        receipt:{
-          receiptNumber:`REC-${sessionId.slice(-8).toUpperCase()}`,
-          type:'purchase',
-          date:new Date().toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}),
-          item:{
-            id:existing.id,
-            title:existing.title,
-            category:existing.category,
-            material:existing.material,
-            condition:existing.condition,
-            address:existing.address
-          },
-          buyer:{
-            name:buyer?.name||'Buyer',
-            email:buyer?.email||user.email,
-            phone:buyer?.phone||''
-          },
-          seller:{
-            name:seller?.name||'Contractor',
-            email:seller?.email||'',
-            phone:seller?.phone||''
-          },
-          payment:{
-            amount:Number(existing.price)||0,
-            currency:'usd',
-            method:'Credit / Debit Card (Stripe)',
-            transactionId:sessionId,
-            status:'Completed'
-          }
-        }
-      });
-    }
-
-    // Contractor withdrawal request
-    if(action==='request-payout'){
-      const {amount,paymentMethod,accountDetails,notes}=body;
-      const parsedAmount=Number(amount);
-      if(!Number.isFinite(parsedAmount)||parsedAmount<=0){
-        return fail('Please enter a valid withdrawal amount.');
-      }
-      if(!paymentMethod||typeof paymentMethod!=='string'||!paymentMethod.trim()){
-        return fail('Please choose a withdrawal method (e.g., Bank Transfer, Stripe Payout, PayPal).');
-      }
-      if(!accountDetails||typeof accountDetails!=='string'||!accountDetails.trim()){
-        return fail('Please enter your account details for withdrawal.');
-      }
-
-      // Verify contractor role
-      const {data:contractor}=await db.from('users').select('role').eq('id',user.userId).maybeSingle();
-      if(contractor?.role!=='contractor')return fail('Contractor accounts only.',403);
-
-      // Verify available balance
-      const {data:sold}=await db.from('listings').select('price').eq('posted_by',user.userId).eq('status','claimed');
-      const totalEarned=(sold||[]).reduce((sum,l)=>sum+Number(l.price||0),0);
-
-      const {data:payouts}=await db.from('payout_requests').select('amount,status').eq('contractor_id',user.userId);
-      const withdrawnOrPending=(payouts||[])
-        .filter(p=>p.status==='paid'||p.status==='approved'||p.status==='pending')
-        .reduce((sum,p)=>sum+Number(p.amount||0),0);
-
-      const availableBalance=Math.max(0,Math.round((totalEarned-withdrawnOrPending)*100)/100);
-
-      if(parsedAmount>availableBalance){
-        return fail(`Requested amount ($${parsedAmount.toFixed(2)}) exceeds available balance ($${availableBalance.toFixed(2)}).`);
-      }
-
-      const {data:payout,error:pErr}=await db.from('payout_requests').insert({
-        contractor_id:user.userId,
-        amount:parsedAmount,
-        payment_method:paymentMethod.trim().slice(0,100),
-        account_details:accountDetails.trim().slice(0,500),
-        notes:typeof notes==='string'?notes.slice(0,500):null,
-        status:'pending'
-      }).select().single();
-
-      if(pErr){
-        console.error('Payout request error:',pErr);
-        return fail('Failed to submit withdrawal request.',503);
-      }
-
-      return Response.json({ok:true,payout});
-    }
-
-    return fail('Unknown action.');
-  }catch(e:any){
-    console.error('Payments error:',e);
-    return fail(e.message||'Payment processing failed. Please try again.',500);
-  }
-}
+  const {data:item,error:itemError}=await db.from('listings').select('title').eq('id',body.listingId).single();
+  if(itemError)throw itemError;
+  const expires=Math.floor(Date.parse(order.expires_at)/1000)-300;
+  if(expires<Date.now()/1000+1800)return fail('Checkout is being prepared or has expired. Please try again after this reservation ends.',409);
+  const session=await stripe.checkout.sessions.create({mode:'payment',payment_method_types:['card'],
+   line_items:[{price_data:{currency:'usd',product_data:{name:item.title},unit_amount:Number(order.amount_cents)},quantity:1}],
+   metadata:{orderId:order.id,listingId:body.listingId,buyerId:user.userId},expires_at:expires,
+   success_url:`${base}/buyer?payment=success&session={CHECKOUT_SESSION_ID}`,cancel_url:`${base}/buyer?payment=cancelled&order=${order.id}`,
+   customer_email:user.email},{idempotencyKey:`salvage-checkout-${order.id}`});
+  const saved=await db.from('payment_orders').update({stripe_session_id:session.id}).eq('id',order.id).eq('status','pending');
+  if(saved.error)throw saved.error;
+  return Response.json({url:session.url});
+ }
+ if(body.action==='cancel-checkout'){
+  if(!uuid(body.orderId))return fail('Invalid checkout.');
+  const {data:order,error}=await db.from('payment_orders').select('stripe_session_id').eq('id',body.orderId).eq('buyer_id',user.userId).single();
+  if(error||!order.stripe_session_id)return fail('Checkout not found.',404);
+  const stripe=stripeClient(),session=await stripe.checkout.sessions.retrieve(order.stripe_session_id);
+  if(session.metadata?.buyerId!==user.userId)return fail('This checkout belongs to another account.',403);
+  if(session.status==='open')await stripe.checkout.sessions.expire(session.id);
+  if(session.payment_status==='paid')return fail('Payment completed. Open your payment history.',409);
+  const updated=await db.from('payment_orders').update({status:'expired'}).eq('stripe_session_id',session.id).eq('buyer_id',user.userId).eq('status','pending');
+  if(updated.error)throw updated.error;return Response.json({ok:true});
+ }
+ if(body.action==='verify-payment'){
+  if(typeof body.sessionId!=='string'||!body.sessionId.startsWith('cs_'))return fail('Invalid session.');
+  const order=await fulfillCheckout(body.sessionId,user.userId);
+  if(order.status!=='paid')return fail('This purchase could not be assigned to you. Your payment has been refunded or is awaiting refund.',409);
+  return Response.json({ok:true,receipt:await receiptFor(order.listing_id,user.userId)});
+ }
+ if(body.action==='request-payout'){
+  const {amount,paymentMethod,accountDetails,notes,requestKey}=body;
+  if(!user.emailVerified)return fail('Verify your email before requesting a withdrawal.',403);
+  if(!uuid(requestKey)||!Number.isFinite(Number(amount))||Number(amount)<=0||typeof paymentMethod!=='string'||!paymentMethod.trim()||typeof accountDetails!=='string'||!accountDetails.trim())return fail('Enter a valid amount and withdrawal details.');
+  const {data:payout,error}=await db.rpc('request_withdrawal',{p_contractor:user.userId,p_amount:Number(amount),p_method:paymentMethod.trim().slice(0,100),p_details:accountDetails.trim().slice(0,500),p_notes:typeof notes==='string'?notes.slice(0,500):'',p_key:requestKey,p_live:paymentMode()});
+  if(error)return fail('Withdrawal could not be submitted. Check your available balance and enter an amount with at most two decimal places.',409);
+  return Response.json({ok:true,payout,testMode:!payout.livemode});
+ }
+ return fail('Unknown action.');
+}catch{return fail('Could not complete the payment request. Please try again.',503);}}

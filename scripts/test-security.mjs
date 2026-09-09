@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import ts from 'typescript';
+import Stripe from 'stripe';
+async function load(path){const code=ts.transpileModule(await readFile(path,'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;return import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));}
+const {handleAuth}=await load('lib/auth-actions.ts');
+let resent=0;
+const client={auth:{getUser:async()=>({data:{user:null}}),resend:async()=>{resent++;return {error:null};},signUp:async()=>({data:{session:null},error:null}),signInWithPassword:async()=>({error:{code:'email_not_confirmed'}})}};
+const signup=await handleAuth({action:'signup',email:'test@example.test',password:'test-password',role:'buyer'},client,'https://example.test');
+assert.equal((await signup.json()).verificationRequired,true);
+const login=await handleAuth({action:'login',email:'test@example.test',password:'test-password'},client,'https://example.test');
+assert.equal(login.status,401,'Unconfirmed login must not establish a session');
+assert.equal((await login.json()).verificationRequired,true);
+const resend=await handleAuth({action:'resend-verification',email:'test@example.test'},client,'https://example.test');
+assert.equal(resend.status,200,'Resend does not require password');assert.equal(resent,1);
+const {generateReceiptHTML}=await load('lib/receipt.ts');
+const attack='<script>window.opener.location="https://evil.test"</script><img src=x onerror=alert(1)>';
+const html=generateReceiptHTML({receiptNumber:attack,type:'purchase',date:attack,item:{id:attack,title:attack,category:attack,material:attack,condition:attack,address:attack},buyer:{name:attack,email:attack,phone:attack},seller:{name:attack,email:attack,phone:attack},payment:{amount:100,currency:'usd',method:attack,status:attack,test:true}});
+assert.ok(!html.includes('<script>'));assert.ok(!html.includes('<img'));assert.ok(html.includes('&lt;script&gt;'));assert.ok(html.includes('NO REAL MONEY'));
+// Use the real Stripe signature verifier and stub only fulfillment/database effects.
+const sdk=new Stripe('sk_test_not_a_real_key');let fulfilled=0;
+const source=ts.transpileModule(await readFile('app/api/payments/webhook/route.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+const exports={};new Function('require','exports',source)(name=>name==='@/lib/payments'?{stripeClient:()=>sdk,fulfillCheckout:async()=>{fulfilled++;}}:{admin:()=>{throw Error('Unexpected database call');}},exports);
+process.env.STRIPE_WEBHOOK_SECRET='whsec_isolated_test_only';
+const payload=JSON.stringify({id:'evt_test',type:'checkout.session.completed',data:{object:{id:'cs_test',metadata:{orderId:'order'},payment_status:'paid'}}});
+const request=(signature)=>new Request('https://example.test/api/payments/webhook',{method:'POST',headers:{'stripe-signature':signature},body:payload});
+assert.equal((await exports.POST(request('bad'))).status,400);assert.equal(fulfilled,0);
+const signature=sdk.webhooks.generateTestHeaderString({payload,secret:process.env.STRIPE_WEBHOOK_SECRET});
+assert.equal((await exports.POST(request(signature))).status,200);assert.equal(fulfilled,1);
+console.log('PASS: email confirmation enforced, resend without password, receipt injection escaped, test receipt labelled, forged webhook rejected, signed webhook accepted.');

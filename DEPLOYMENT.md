@@ -1,5 +1,42 @@
 # Deploy Salvage to Vercel — Step-by-Step Guide
 
+## Payment integrity update (required for the hackathon)
+
+The payment fixes add migration `202609090005_payment_integrity.sql`. Existing projects can apply it with:
+
+```bash
+node --env-file=.env scripts/upgrade-payments.mjs
+```
+
+This preserves existing accounts and listings. Historical claimed listings are not counted as earnings without a verified payment order.
+
+Register a Stripe **test-mode** webhook and save its signing secret into the ignored local `.env`:
+
+```bash
+node --env-file=.env scripts/configure-payments.mjs https://salvage-six.vercel.app
+```
+
+Copy `STRIPE_WEBHOOK_SECRET` and `NEXT_PUBLIC_APP_URL` from `.env` into Vercel's production environment variables alongside the existing Stripe and Supabase variables. Redeploy the updated source. Never put the webhook secret in a `NEXT_PUBLIC_` variable.
+
+Webhook URL: `/api/payments/webhook`. Events: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.expired`, `charge.refunded`. The raw request body and Stripe signature are verified before processing. Checkout completion is idempotent, so webhook retries and the buyer's return page cannot create duplicate claims.
+
+Hackathon behavior: Stripe test-mode purchases produce clearly labelled test receipts and simulated withdrawals. No actual bank transfer occurs. Live-mode withdrawals create pending requests for manual processing; automated bank payouts require a separate Stripe Connect integration.
+
+Checkout reserves an item for up to 40 minutes, with Stripe checkout expiring five minutes before the hold is released. Returning through Cancel releases the hold immediately. Late payments after a reservation has been replaced are refunded. Earnings use confirmed payment records less refunds, and test/live balances remain separate.
+
+Email confirmation must be enabled in Supabase. Signup displays a check-inbox message, and unconfirmed accounts cannot log in. The resend action does not require a password. Previously auto-confirmed accounts are preserved; the fix does not retroactively prove inbox ownership for them.
+
+Verification:
+
+```bash
+pnpm test
+pnpm run build
+```
+
+To run service integration tests, start a local production build on port 3001, set its `NEXT_PUBLIC_APP_URL` to `http://localhost:3001`, then run `node --env-file=.env scripts/test-integration.mjs --run`. This creates temporary test accounts/listings and real Stripe test Checkout sessions, then removes its fixtures. It sends no emails and moves no real money.
+
+For the submission demo, use two confirmed accounts: publish a free item and claim it, then publish a priced item and pay through Stripe test Checkout. Confirm the purchase appears in the buyer's history and contractor's earnings; download the receipt and submit a simulated withdrawal. Check donation records separately on an unpurchased item.
+
 Salvage is a Next.js App Router application powered by Supabase (PostgreSQL, Auth, Storage) and Stripe for payments. Follow these steps to deploy to Vercel.
 
 ---
@@ -42,6 +79,7 @@ In the Vercel project configuration page (under **Environment Variables**), add 
 | `GEMINI_API_KEY` | Your Google Gemini API Key |
 | `STRIPE_PUBLISHABLE_KEY` | Your Stripe publishable key (`pk_test_...` or live key) |
 | `STRIPE_SECRET_KEY` | Your Stripe secret key (`sk_test_...` or live key) |
+| `STRIPE_WEBHOOK_SECRET` | Signing secret for the `/api/payments/webhook` endpoint |
 
 > **Note**: Do not add `SUPABASE_ACCESS_TOKEN` to Vercel. It is only needed locally for database migration scripts.
 
