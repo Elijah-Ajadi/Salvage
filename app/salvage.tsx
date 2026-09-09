@@ -62,7 +62,9 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
  const [buyerHistory,setBuyerHistory]=useState<any[]>([]);
 
  const withdrawalKey=useRef<string|null>(null);
- const editing=useRef(false); 
+ const cameraInput=useRef<HTMLInputElement>(null);
+ const galleryInput=useRef<HTMLInputElement>(null);
+ const editing=useRef(false);
  editing.current=!!modal;
  const notify=(s:string)=>setMessage(s);
 
@@ -640,7 +642,14 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
 
     {/* Add Item Modal */}
     {modal==='add'&&<form onSubmit={publish} className="form-stack">
-     <label className="photo-upload">{draft.photo?<img src={draft.photo} alt="Your item"/>:<><Camera size={30}/><strong>Take or upload a photo</strong><span>We'll fill in the details for you</span></>}<input type="file" accept="image/*" onChange={e=>photo(e.target.files?.[0])} disabled={busy}/></label>
+     <div className="listing-photo-controls">
+       {draft.photo&&<img className="listing-photo-preview" src={draft.photo} alt="Your item"/>}
+       <input ref={cameraInput} type="file" accept="image/*" capture="environment" hidden disabled={busy} aria-label="Take an item photo" onChange={e=>{const file=e.target.files?.[0];e.target.value='';void photo(file);}}/>
+       <input ref={galleryInput} type="file" accept="image/*" hidden disabled={busy} aria-label="Choose an item photo from gallery" onChange={e=>{const file=e.target.files?.[0];e.target.value='';void photo(file);}}/>
+       <button type="button" className="primary full listing-camera-button" disabled={busy} onClick={()=>cameraInput.current?.click()}><Camera size={24}/>{draft.photo?'Retake photo':'Take a photo'}</button>
+       <button type="button" className="listing-gallery-button" disabled={busy} onClick={()=>galleryInput.current?.click()}>Choose from gallery</button>
+       {!draft.photo&&<p className="muted">Photograph your item and we’ll fill in the details for you.</p>}
+     </div>
      {aiNote&&(aiProgress>0&&aiProgress<100
       ?<div className="ai-note-progress" role="status"><div className="progress-fill" style={{width:`${aiProgress}%`}}/><div className="progress-shimmer"/><div className="progress-content"><span>{aiNote}</span><span className="progress-percent">{aiProgress}%</span></div></div>
       :<p className="ai-note" role="status">{aiNote}</p>
