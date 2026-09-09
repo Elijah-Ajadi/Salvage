@@ -1,0 +1,59 @@
+/* Landing layout is scoped so dashboard navigation keeps its own breakpoints. */
+.landing { width: 100%; }
+.landing section, .landing article, .landing section div { min-width: 0; }
+.landing svg { flex-shrink: 0; }
+.landing h1, .landing h2, .landing h3, .landing h4 { overflow-wrap: anywhere; }
+.landing .topbar { height: auto; min-height: 88px; gap: 24px; flex-wrap: wrap; padding: 16px 5%; }
+.landing .brand { flex-shrink: 0; }
+.landing .topbar nav { position: static; display: flex; height: auto; align-items: center; gap: 24px; padding: 0; border: 0; }
+.landing .topbar nav a { display: inline-flex; align-items: center; min-height: 44px; }
+.landing .header-actions { gap: 12px; }
+.landing .header-actions a { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+.landing .landing-hero { grid-template-columns: repeat(2,minmax(0,1fr)); gap: clamp(24px,4vw,60px); }
+.landing .landing-hero h1 { font-size: clamp(32px,4.4vw,58px); }
+.landing .landing-visual > img { display: block; width: 100%; height: clamp(280px,40vw,480px); object-fit: cover; }
+.landing-visual { position: relative; }
+.landing-photo-caption { position: absolute; bottom: 24px; left: 24px; right: 24px; }
+.landing-stats { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 30px; padding: clamp(22px,3vw,36px) clamp(22px,4vw,44px); }
+.landing .landing-steps { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 24px; margin-left: auto; margin-right: auto; }
+.landing-audiences { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 32px; }
+.landing .landing-audiences li { align-items: flex-start; }
+.landing .landing-audiences li svg { margin-top: 2px; }
+.landing footer a { display: inline-flex; align-items: center; min-height: 44px; }
+
+@media (max-width: 1050px) {
+  .landing .topbar nav { order: 3; flex-basis: 100%; justify-content: center; flex-wrap: wrap; gap: 8px 24px; }
+  .landing .topbar { row-gap: 8px; }
+  .landing-stats { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+
+@media (max-width: 760px) {
+  .landing .topbar { padding: 14px 5% 8px; gap: 8px; }
+  .landing .brand { font-size: 27px; }
+  .landing .header-actions { gap: 6px; }
+  .landing .topbar .primary { padding: 10px 12px; }
+  .landing .topbar nav { gap: 4px 18px; }
+  .landing .landing-hero { grid-template-columns: minmax(0,1fr); padding: 36px 5% 44px; gap: 28px; }
+  .landing .landing-hero h1 { font-size: clamp(32px,7.8vw,48px); }
+  .landing .landing-visual > img { height: clamp(260px,65vw,420px); }
+  .landing .landing-steps, .landing-audiences { grid-template-columns: minmax(0,1fr); gap: 20px; }
+  .landing .landing-steps { margin: 0; }
+  .landing .landing-actions a { flex: 1 1 220px; justify-content: center; min-height: 48px; text-align: center; }
+  .landing .landing-audiences .primary { width: 100%; }
+  .landing .landing-cta a { flex: 1 1 240px; justify-content: center; text-align: center; min-height: 48px; }
+  .landing footer > div { max-width: 100%; flex-wrap: wrap; }
+}
+
+@media (max-width: 430px) {
+  .landing .topbar .brand { font-size: 25px; }
+  .landing .brand-icon { width: 30px; height: 30px; margin-right: 7px; }
+  .landing .topbar .header-actions { gap: 4px; }
+  .landing .topbar nav { justify-content: space-between; gap: 4px 10px; }
+  .landing-stats { grid-template-columns: minmax(0,1fr); gap: 24px; }
+  .landing-photo-caption { left: 12px; right: 12px; bottom: 12px; }
+  .landing .landing-visual > img { min-height: 300px; }
+}
+
+@media (max-width: 350px) {
+  .landing .topbar .header-actions { flex-basis: 100%; margin-left: 0; justify-content: flex-end; }
+}

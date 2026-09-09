@@ -2,6 +2,7 @@ import {
   Recycle, ArrowUpRight, ArrowRight, Camera, Truck, Leaf, ShieldCheck, 
   Sparkles, DollarSign, HeartHandshake, CheckCircle2, MapPin, Clock, Eye 
 } from 'lucide-react';
+import './landing.css';
 import { demoItems } from '@/lib/materials';
 
 export default function Home() {
@@ -13,7 +14,7 @@ export default function Home() {
           <span className="brand-icon"><Recycle size={27}/></span>
           salvage<span className="brand-dot">.</span>
         </a>
-        <nav style={{display:'flex',gap:'28px',alignItems:'center'}}>
+        <nav aria-label="Page navigation">
           <a href="#how-it-works" style={{fontSize:'14px',fontWeight:600,color:'#636e59'}}>How it works</a>
           <a href="#features" style={{fontSize:'14px',fontWeight:600,color:'#636e59'}}>Features</a>
           <a href="#materials" style={{fontSize:'14px',fontWeight:600,color:'#636e59'}}>Browse materials</a>
@@ -33,7 +34,7 @@ export default function Home() {
             <span style={{width:'7px',height:'7px',borderRadius:'50%',background:'#507b34'}}/>
             THE LOCAL MATERIAL EXCHANGE
           </div>
-          <h1 style={{fontSize:'58px',lineHeight:1.08,letterSpacing:'-2.2px',fontWeight:750,color:'#202d18',margin:'0 0 20px'}}>
+          <h1 style={{lineHeight:1.08,letterSpacing:'-2.2px',fontWeight:750,color:'#202d18',margin:'0 0 20px'}}>
             Good materials.<br/>Another life.
           </h1>
           <p style={{fontSize:'18px',lineHeight:1.7,color:'#69755f',maxWidth:'520px',margin:'0 0 32px'}}>
@@ -60,14 +61,14 @@ export default function Home() {
           </div>
         </div>
 
-        <div style={{position:'relative'}}>
+        <div className="landing-visual">
           <img 
             src="https://images.ctfassets.net/9aljq1ivr2md/6etNgU5eC3vTbqnoguD6S0/26ee68446ef583ddb0c677d437bf18e0/oak-kitchen-cabinets.jpg?bg=transparent&fl=progressive&fm=jpg&h=525&q=50&w=1000" 
             alt="Wood kitchen cabinetry ready for a second life"
-            style={{width:'100%',height:'480px',objectFit:'cover',borderRadius:'20px',boxShadow:'0 16px 40px rgba(35,48,22,0.12)',border:'1px solid #dee5d7'}}
+            style={{width:'100%',objectFit:'cover',borderRadius:'20px',boxShadow:'0 16px 40px rgba(35,48,22,0.12)',border:'1px solid #dee5d7'}}
           />
           {/* Floating badge */}
-          <div style={{position:'absolute',bottom:'24px',left:'24px',background:'rgba(255,255,255,0.94)',backdropFilter:'blur(10px)',border:'1px solid #dce4d5',borderRadius:'12px',padding:'14px 18px',boxShadow:'0 8px 24px rgba(0,0,0,0.08)',display:'flex',alignItems:'center',gap:'14px',maxWidth:'320px'}}>
+          <div className="landing-photo-caption" style={{background:'rgba(255,255,255,0.94)',backdropFilter:'blur(10px)',border:'1px solid #dce4d5',borderRadius:'12px',padding:'14px 18px',boxShadow:'0 8px 24px rgba(0,0,0,0.08)',display:'flex',alignItems:'center',gap:'14px',maxWidth:'320px'}}>
             <div style={{width:'42px',height:'42px',borderRadius:'10px',background:'#eaf2e3',display:'grid',placeItems:'center',color:'#3b5f25',flexShrink:0}}>
               <Sparkles size={22}/>
             </div>
@@ -81,7 +82,7 @@ export default function Home() {
 
       {/* Impact Stats Banner */}
       <section style={{maxWidth:'1260px',margin:'0 auto 70px',padding:'0 5%'}}>
-        <div style={{background:'#2d4122',borderRadius:'16px',padding:'36px 44px',display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:'30px',color:'#fff',boxShadow:'0 10px 30px rgba(45,65,34,0.15)'}}>
+        <div className="landing-stats" style={{background:'#2d4122',borderRadius:'16px',color:'#fff',boxShadow:'0 10px 30px rgba(45,65,34,0.15)'}}>
           <div>
             <div style={{fontSize:'36px',fontWeight:800,letterSpacing:'-1px',color:'#d6e8c7'}}>12,400+</div>
             <div style={{fontSize:'14px',color:'#a9bc9a',marginTop:'4px'}}>Tons of building materials diverted</div>
@@ -105,12 +106,12 @@ export default function Home() {
       <section id="how-it-works" style={{maxWidth:'1260px',margin:'0 auto 90px',padding:'0 5%'}}>
         <div style={{textAlign:'center',maxWidth:'640px',margin:'0 auto 50px'}}>
           <div style={{fontSize:'12px',fontWeight:700,letterSpacing:'1.5px',textTransform:'uppercase',color:'#647e52',marginBottom:'10px'}}>How Salvage Works</div>
-          <h2 style={{fontSize:'38px',fontWeight:750,letterSpacing:'-1px',color:'#202d18',margin:'0 0 16px'}}>A seamless cycle from demolition to creation</h2>
+          <h2 style={{fontSize:'clamp(27px, 4vw, 38px)',fontWeight:750,letterSpacing:'-1px',color:'#202d18',margin:'0 0 16px'}}>A seamless cycle from demolition to creation</h2>
           <p style={{fontSize:'16px',color:'#6b7762',lineHeight:1.7}}>Whether clearing a full job site or sourcing genuine period materials, Salvage takes the friction out of reclamation.</p>
         </div>
 
-        <div className="landing-steps" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'32px',border:'none',padding:0}}>
-          <article style={{background:'#fff',border:'1px solid #e1e7db',borderRadius:'16px',padding:'36px 30px',boxShadow:'0 4px 16px rgba(0,0,0,0.03)'}}>
+        <div className="landing-steps" style={{display:'grid',border:'none',padding:0}}>
+          <article style={{background:'#fff',border:'1px solid #e1e7db',borderRadius:'16px',padding:'clamp(22px, 3vw, 36px)',boxShadow:'0 4px 16px rgba(0,0,0,0.03)'}}>
             <div style={{width:'52px',height:'52px',borderRadius:'12px',background:'#edf5e7',color:'#456a2f',display:'grid',placeItems:'center',marginBottom:'20px'}}>
               <Camera size={26}/>
             </div>
@@ -143,19 +144,19 @@ export default function Home() {
       </section>
 
       {/* Featured Live Materials Showcase */}
-      <section id="materials" style={{background:'#f3f6ee',borderTop:'1px solid #e2e8dc',borderBottom:'1px solid #e2e8dc',padding:'80px 5%'}}>
+      <section id="materials" style={{background:'#f3f6ee',borderTop:'1px solid #e2e8dc',borderBottom:'1px solid #e2e8dc',padding:'clamp(40px, 6vw, 80px) 5%'}}>
         <div style={{maxWidth:'1260px',margin:'0 auto'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:'38px',flexWrap:'wrap',gap:'20px'}}>
             <div>
               <div style={{fontSize:'12px',fontWeight:700,letterSpacing:'1.5px',textTransform:'uppercase',color:'#647e52',marginBottom:'8px'}}>Live Exchange</div>
-              <h2 style={{fontSize:'34px',fontWeight:750,letterSpacing:'-0.8px',color:'#202d18',margin:0}}>Materials ready for pickup today</h2>
+              <h2 style={{fontSize:'clamp(26px, 4vw, 34px)',fontWeight:750,letterSpacing:'-0.8px',color:'#202d18',margin:0}}>Materials ready for pickup today</h2>
             </div>
             <a href="/signup?role=buyer" style={{display:'inline-flex',alignItems:'center',gap:'8px',fontWeight:700,fontSize:'14px',color:'#3a5b28'}}>
               View all materials in your area <ArrowRight size={16}/>
             </a>
           </div>
 
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:'24px'}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,280px),1fr))',gap:'24px'}}>
             {demoItems.slice(0,4).map(item => (
               <div key={item.id} style={{background:'#fff',borderRadius:'14px',overflow:'hidden',border:'1px solid #dce3d5',boxShadow:'0 2px 10px rgba(0,0,0,0.03)'}}>
                 <div style={{height:'210px',position:'relative'}}>
@@ -188,9 +189,9 @@ export default function Home() {
 
       {/* Built For Contractors & Buyers (Dual Value Section) */}
       <section id="features" style={{maxWidth:'1260px',margin:'90px auto',padding:'0 5%'}}>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'40px'}}>
+        <div className="landing-audiences">
           {/* Contractor Column */}
-          <div style={{background:'#edf4e7',borderRadius:'20px',padding:'46px 40px',border:'1px solid #cadbc0'}}>
+          <div style={{background:'#edf4e7',borderRadius:'20px',padding:'clamp(22px, 4vw, 46px)',border:'1px solid #cadbc0'}}>
             <div style={{display:'inline-flex',alignItems:'center',gap:'6px',fontSize:'11px',fontWeight:700,textTransform:'uppercase',letterSpacing:'1px',color:'#456930',background:'#dfead6',padding:'5px 12px',borderRadius:'20px',marginBottom:'18px'}}>
               FOR CONTRACTORS &amp; DEMOLITION TEAMS
             </div>
@@ -220,7 +221,7 @@ export default function Home() {
           </div>
 
           {/* Buyer Column */}
-          <div style={{background:'#fff',borderRadius:'20px',padding:'46px 40px',border:'1px solid #dbe2d4',boxShadow:'0 4px 20px rgba(0,0,0,0.03)'}}>
+          <div style={{background:'#fff',borderRadius:'20px',padding:'clamp(22px, 4vw, 46px)',border:'1px solid #dbe2d4',boxShadow:'0 4px 20px rgba(0,0,0,0.03)'}}>
             <div style={{display:'inline-flex',alignItems:'center',gap:'6px',fontSize:'11px',fontWeight:700,textTransform:'uppercase',letterSpacing:'1px',color:'#3b5c89',background:'#ebf1f9',padding:'5px 12px',borderRadius:'20px',marginBottom:'18px'}}>
               FOR DIYERS, BUILDERS &amp; RESTORERS
             </div>
@@ -252,9 +253,9 @@ export default function Home() {
       </section>
 
       {/* Call to Action Banner */}
-      <section style={{maxWidth:'1260px',margin:'0 auto 90px',padding:'0 5%'}}>
-        <div style={{background:'linear-gradient(135deg, #37532a 0%, #25391c 100%)',borderRadius:'24px',padding:'65px 50px',textAlign:'center',color:'#fff',boxShadow:'0 18px 45px rgba(35,50,25,0.18)'}}>
-          <h2 style={{fontSize:'42px',fontWeight:800,letterSpacing:'-1.2px',margin:'0 0 16px'}}>
+      <section className="landing-cta" style={{maxWidth:'1260px',margin:'0 auto 90px',padding:'0 5%'}}>
+        <div style={{background:'linear-gradient(135deg, #37532a 0%, #25391c 100%)',borderRadius:'24px',padding:'clamp(24px, 5vw, 65px)',textAlign:'center',color:'#fff',boxShadow:'0 18px 45px rgba(35,50,25,0.18)'}}>
+          <h2 style={{fontSize:'clamp(28px, 4vw, 42px)',fontWeight:800,letterSpacing:'-1.2px',margin:'0 0 16px'}}>
             Ready to give good materials another life?
           </h2>
           <p style={{fontSize:'18px',color:'#d0e1c5',maxWidth:'620px',margin:'0 auto 34px',lineHeight:1.6}}>
