@@ -1,0 +1,1 @@
+export function hasCoordinates(value:{lat:unknown;lng:unknown}){return typeof value.lat==='number'&&Number.isFinite(value.lat)&&Math.abs(value.lat)<=90&&typeof value.lng==='number'&&Number.isFinite(value.lng)&&Math.abs(value.lng)<=180;}

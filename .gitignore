@@ -28,6 +28,10 @@ yarn-error.log*
 
 # local environment
 .env*
+!.env.example
+.env.local
+.env.*.local
+.env
 
 # deployment and generated files
 .vercel
@@ -36,7 +40,8 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+/.gemini/
+/.agents/
 
 /.pnpm-store/
 *.tsbuildinfo
-!.env.example
