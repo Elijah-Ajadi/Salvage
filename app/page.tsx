@@ -186,7 +186,7 @@ export default async function Home() {
               <div key={item.id} style={{background:'#fff',borderRadius:'14px',overflow:'hidden',border:'1px solid #dce3d5',boxShadow:'0 2px 10px rgba(0,0,0,0.03)',transition:'transform 0.2s,box-shadow 0.2s'}}>
                 <div style={{height:'210px',position:'relative',overflow:'hidden'}}>
                   <img src={item.photo} alt={item.title} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
-                  <span style={{position:'absolute',top:'12px',left:'12px',background:'#fff',padding:'5px 10px',borderRadius:'5px',fontSize:'11px',fontWeight:700,color:Number(item.price)>0?'#fff':'#365a25',background:Number(item.price)>0?'#2d4822':'#fff',boxShadow:'0 2px 6px rgba(0,0,0,0.08)'}}>
+                  <span style={{position:'absolute',top:'12px',left:'12px',padding:'5px 10px',borderRadius:'5px',fontSize:'11px',fontWeight:700,boxShadow:'0 2px 6px rgba(0,0,0,0.08)',...(Number(item.price)>0?{background:'#2d4822',color:'#fff'}:{background:'#fff',color:'#365a25'})}}>
                     {item.price && Number(item.price) > 0 ? `$${Number(item.price).toFixed(2)}` : 'FREE PICKUP'}
                   </span>
                 </div>
