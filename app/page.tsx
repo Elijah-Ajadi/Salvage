@@ -4,8 +4,27 @@ import {
 } from 'lucide-react';
 import './landing.css';
 import { demoItems } from '@/lib/materials';
+import { admin } from '@/lib/supabase/server';
 
-export default function Home() {
+async function getLiveListings() {
+  try {
+    const db = admin();
+    const { data } = await db
+      .from('listings')
+      .select('id,title,description,category,material,condition,photo,price,status,created_at,lat,lng')
+      .eq('status', 'available')
+      .order('created_at', { ascending: false })
+      .limit(4);
+    return data && data.length > 0 ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+export default async function Home() {
+  const liveListings = await getLiveListings();
+  const displayItems = liveListings || demoItems.slice(0, 4);
+  const isLive = !!liveListings;
   return (
     <main className="landing">
       {/* Navigation Topbar */}
@@ -17,7 +36,7 @@ export default function Home() {
         <nav aria-label="Page navigation">
           <a href="#how-it-works" style={{fontSize:'14px',fontWeight:600,color:'#636e59'}}>How it works</a>
           <a href="#features" style={{fontSize:'14px',fontWeight:600,color:'#636e59'}}>Features</a>
-          <a href="#materials" style={{fontSize:'14px',fontWeight:600,color:'#636e59'}}>Browse materials</a>
+          <a href="/listings" style={{fontSize:'14px',fontWeight:600,color:'#636e59'}}>Browse listings</a>
         </nav>
         <div className="header-actions">
           <a href="/login" style={{fontSize:'14px',fontWeight:600,color:'#525d48',padding:'8px 12px'}}>Log in</a>
@@ -151,39 +170,47 @@ export default function Home() {
               <div style={{fontSize:'12px',fontWeight:700,letterSpacing:'1.5px',textTransform:'uppercase',color:'#647e52',marginBottom:'8px'}}>Live Exchange</div>
               <h2 style={{fontSize:'clamp(26px, 4vw, 34px)',fontWeight:750,letterSpacing:'-0.8px',color:'#202d18',margin:0}}>Materials ready for pickup today</h2>
             </div>
-            <a href="/signup?role=buyer" style={{display:'inline-flex',alignItems:'center',gap:'8px',fontWeight:700,fontSize:'14px',color:'#3a5b28'}}>
-              View all materials in your area <ArrowRight size={16}/>
+            <a href="/listings" style={{display:'inline-flex',alignItems:'center',gap:'8px',fontWeight:700,fontSize:'14px',color:'#3a5b28'}}>
+              Browse all listings <ArrowRight size={16}/>
             </a>
           </div>
 
+          {isLive && (
+            <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'16px',fontSize:'12px',fontWeight:700,color:'#3c6527',background:'#eaf2e3',padding:'7px 14px',borderRadius:'20px',width:'fit-content'}}>
+              <span style={{width:'7px',height:'7px',borderRadius:'50%',background:'#4d8030',display:'inline-block'}}/>
+              Showing live listings
+            </div>
+          )}
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,280px),1fr))',gap:'24px'}}>
-            {demoItems.slice(0,4).map(item => (
-              <div key={item.id} style={{background:'#fff',borderRadius:'14px',overflow:'hidden',border:'1px solid #dce3d5',boxShadow:'0 2px 10px rgba(0,0,0,0.03)'}}>
-                <div style={{height:'210px',position:'relative'}}>
+            {displayItems.map((item:any) => (
+              <div key={item.id} style={{background:'#fff',borderRadius:'14px',overflow:'hidden',border:'1px solid #dce3d5',boxShadow:'0 2px 10px rgba(0,0,0,0.03)',transition:'transform 0.2s,box-shadow 0.2s'}}>
+                <div style={{height:'210px',position:'relative',overflow:'hidden'}}>
                   <img src={item.photo} alt={item.title} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
-                  <span style={{position:'absolute',top:'12px',left:'12px',background:'#fff',padding:'5px 10px',borderRadius:'5px',fontSize:'11px',fontWeight:700,color:'#365a25',boxShadow:'0 2px 6px rgba(0,0,0,0.08)'}}>
+                  <span style={{position:'absolute',top:'12px',left:'12px',background:'#fff',padding:'5px 10px',borderRadius:'5px',fontSize:'11px',fontWeight:700,color:Number(item.price)>0?'#fff':'#365a25',background:Number(item.price)>0?'#2d4822':'#fff',boxShadow:'0 2px 6px rgba(0,0,0,0.08)'}}>
                     {item.price && Number(item.price) > 0 ? `$${Number(item.price).toFixed(2)}` : 'FREE PICKUP'}
-                  </span>
-                  <span style={{position:'absolute',bottom:'12px',right:'12px',background:'rgba(255,255,255,0.9)',padding:'4px 8px',borderRadius:'4px',fontSize:'11px',fontWeight:600,color:'#4f5f44',display:'flex',alignItems:'center',gap:'4px'}}>
-                    <MapPin size={12}/> {item.area || 'Austin, TX'}
                   </span>
                 </div>
                 <div style={{padding:'18px 20px'}}>
                   <div style={{fontSize:'11px',textTransform:'uppercase',letterSpacing:'0.8px',fontWeight:700,color:'#7a8870',marginBottom:'6px'}}>
                     {item.category} · {item.condition} condition
                   </div>
-                  <h4 style={{fontSize:'17px',fontWeight:700,color:'#23301a',margin:'0 0 8px'}}>{item.title}</h4>
+                  <h4 style={{fontSize:'17px',fontWeight:700,color:'#23301a',margin:'0 0 8px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.title}</h4>
                   <p style={{fontSize:'13px',color:'#717e69',lineHeight:1.5,margin:'0 0 16px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.description}</p>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:'1px solid #edf1e8',paddingTop:'12px'}}>
-                    <span style={{fontSize:'12px',color:'#7c8774'}}>{item.owner_name || 'Local contractor'}</span>
-                    <a href="/signup?role=buyer" style={{fontSize:'12px',fontWeight:700,color:'#3b5f25',display:'inline-flex',alignItems:'center',gap:'4px'}}>
-                      Claim <ArrowUpRight size={14}/>
+                    <span style={{fontSize:'12px',color:'#7c8774'}}>{(item as any).owner_name || 'Local contractor'}</span>
+                    <a href="/listings" style={{fontSize:'12px',fontWeight:700,color:'#3b5f25',display:'inline-flex',alignItems:'center',gap:'4px'}}>
+                      {isLive ? 'View listing' : 'Browse listings'} <ArrowUpRight size={14}/>
                     </a>
                   </div>
                 </div>
               </div>
             ))}
           </div>
+          {!isLive && (
+            <p style={{fontSize:'12px',color:'#8c977f',marginTop:'16px',textAlign:'center'}}>
+              Showing sample listings &mdash; <a href="/listings" style={{color:'#4a7234',fontWeight:600}}>browse live materials</a>
+            </p>
+          )}
         </div>
       </section>
 
