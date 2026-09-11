@@ -2,6 +2,18 @@
 
 ## Payment integrity update (required for the hackathon)
 
+### Pickup protection update
+
+Migration `202609110006_pickup_protection.sql` builds on the payment migration below. For an existing installation, run `node --env-file=.env scripts/upgrade-pickups.mjs --schedule-payments --admin-email YOUR_ADMIN_EMAIL` after applying migration 005. This configures minute-by-minute reservation expiry and reminders, and payment reconciliation every five minutes through Supabase Cron. It stores the maintenance secret in Supabase Vault and writes `ADMIN_USER_IDS` and `CRON_SECRET` to the ignored local `.env`.
+
+Copy both variables to Vercel as server-only production variables and redeploy the updated source. The configured Salvage database already has this migration and both schedules; the new deployment and environment settings are still required for payment reconciliation. `/reports` gives the configured account the review queue.
+
+Run `node --env-file=.env scripts/configure-payments.mjs https://salvage-six.vercel.app` to register the additional `payment_intent.succeeded`, `payment_intent.canceled`, and `payment_intent.amount_capturable_updated` webhook events.
+
+The current flow replaces instant purchases: reserve a pickup window, authorize a card for a priced item, inspect and accept the item on the existing receipt, then have the contractor confirm handover. Only explicit buyer acceptance captures payment. Earnings become available after contractor confirmation. Expired or canceled reservations release the item and card authorization; the next waiting buyer is notified. Reviews require a completed pickup; no-show penalties require admin review.
+
+For the demo, use a buyer and contractor account to complete a free pickup first. For a priced item, use Stripe test Checkout to authorize, return to the receipt, accept during the pickup window, and confirm handover as the contractor. Also test cancellation, the waitlist, a report, and its admin decision. Card capture must be checked with Stripe test mode before submission; no real money is needed.
+
 The payment fixes add migration `202609090005_payment_integrity.sql`. Existing projects can apply it with:
 
 ```bash
@@ -35,7 +47,7 @@ pnpm run build
 
 To run service integration tests, start a local production build on port 3001, set its `NEXT_PUBLIC_APP_URL` to `http://localhost:3001`, then run `node --env-file=.env scripts/test-integration.mjs --run`. This creates temporary test accounts/listings and real Stripe test Checkout sessions, then removes its fixtures. It sends no emails and moves no real money.
 
-For the submission demo, use two confirmed accounts: publish a free item and claim it, then publish a priced item and pay through Stripe test Checkout. Confirm the purchase appears in the buyer's history and contractor's earnings; download the receipt and submit a simulated withdrawal. Check donation records separately on an unpurchased item.
+For the submission demo, follow the pickup protection flow above. Earnings should remain unavailable until handover is confirmed. Check donation records separately on an available item.
 
 Salvage is a Next.js App Router application powered by Supabase (PostgreSQL, Auth, Storage) and Stripe for payments. Follow these steps to deploy to Vercel.
 
@@ -114,6 +126,6 @@ Once deployed:
 3. **AI Vision Listing**: From the contractor workspace, upload a salvage item photo and verify that Gemini auto-populates title, condition, and price suggestion.
 4. **Publish**: Publish a free item and a priced item.
 5. **Buyer Claim & Stripe Checkout**:
-   - Claim the free item and verify that the auto-generated pickup pass opens.
-   - Buy the priced item, verify Stripe Checkout redirection, and check that the official receipt auto-generates upon return.
+   - Reserve the free item and verify that its existing pickup receipt opens; accept and confirm handover from the two accounts.
+   - Reserve the priced item and authorize through Stripe Checkout. Inspect and accept through the receipt, then confirm handover as the contractor.
 6. **Earnings & Withdrawals**: From the contractor account, verify that earnings reflect the sale and submit a test withdrawal request.
