@@ -4,7 +4,8 @@ export function escapeHTML(value:unknown):string {
 
 export interface ReceiptData {
   receiptNumber: string;
-  type: 'purchase' | 'claim';
+  type: 'purchase' | 'claim' | 'reservation';
+  pickup?: {status:string;window:string;deadline:string;liveUrl:string};
   date: string;
   item: {
     id: string;
@@ -38,10 +39,12 @@ export interface ReceiptData {
 export function generateReceiptHTML(data: ReceiptData): string {
   // Escape every externally supplied string before interpolation, including optional fields.
   const escapeFields=(value:any):any=>typeof value==='string'?escapeHTML(value):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([k,v])=>[k,escapeFields(v)])):value;
+  if(data.pickup&&!/^https?:\/\//.test(data.pickup.liveUrl))data={...data,pickup:{...data.pickup,liveUrl:''}};
   data=escapeFields(data);
+  const isReservation=data.type==='reservation';
   const isPaid = data.type === 'purchase' && data.payment.amount > 0;
-  const titleText = isPaid ? 'OFFICIAL PAYMENT RECEIPT' : 'CLAIM CONFIRMATION & PICKUP PASS';
-  const badgeText = data.payment.test ? 'TEST PAYMENT — NO REAL MONEY' : isPaid ? (data.payment.refundedAmount ? 'PARTIALLY REFUNDED' : 'PAID IN FULL') : 'FREE CLAIM CONFIRMED';
+  const titleText = isReservation ? 'RESERVATION & PICKUP RECEIPT' : isPaid ? 'OFFICIAL PAYMENT RECEIPT' : 'CLAIM CONFIRMATION & PICKUP PASS';
+  const badgeText = data.pickup ? data.pickup.status.toUpperCase() : data.payment.test ? 'TEST PAYMENT — NO REAL MONEY' : isPaid ? (data.payment.refundedAmount ? 'PARTIALLY REFUNDED' : 'PAID IN FULL') : 'FREE CLAIM CONFIRMED';
   const badgeColor = isPaid ? '#2d5a27' : '#315485';
   const badgeBg = isPaid ? '#eaf5e6' : '#eaf0f9';
 
@@ -263,8 +266,9 @@ export function generateReceiptHTML(data: ReceiptData): string {
   </div>
 
   <h2 class="doc-title">${titleText}</h2>
+  ${data.pickup?`<p><strong>${data.pickup.status}</strong><br>Pickup: ${data.pickup.window}<br>Deadline: ${data.pickup.deadline}<br><a href="${data.pickup.liveUrl}">Open live receipt for current status and pickup actions</a></p>`:''}
   <p>${data.payment.method} · ${data.payment.status}${data.payment.refundedAmount ? ` · Refunded: $${data.payment.refundedAmount.toFixed(2)}` : ''}</p>
-  <p class="doc-sub">${isPaid ? 'Thank you for your purchase. Please retain this receipt for your pickup appointment.' : 'This document serves as your verified claim ticket for item pickup.'}</p>
+  <p class="doc-sub">${isReservation ? 'This is a reservation, not proof of payment or collection. Inspect the item before accepting.' : isPaid ? 'Thank you for your purchase. Please retain this receipt for your pickup appointment.' : 'This document serves as your verified claim ticket for item pickup.'}</p>
 
   <div class="grid">
     <div class="info-card">
@@ -299,7 +303,7 @@ export function generateReceiptHTML(data: ReceiptData): string {
         <td>${data.item.category}</td>
         <td>${data.item.condition}</td>
         <td style="text-align:right;font-weight:600;">
-          ${isPaid ? `$${data.payment.amount.toFixed(2)}` : '<span style="color:#2f6e2b;">FREE</span>'}
+          ${(isPaid||isReservation) ? `$${data.payment.amount.toFixed(2)}` : '<span style="color:#2f6e2b;">FREE</span>'}
         </td>
       </tr>
     </tbody>
@@ -309,15 +313,15 @@ export function generateReceiptHTML(data: ReceiptData): string {
     <div class="totals-table">
       <div class="totals-row">
         <span>Item Subtotal</span>
-        <span>${isPaid ? `$${data.payment.amount.toFixed(2)}` : '$0.00'}</span>
+        <span>${(isPaid||isReservation) ? `$${data.payment.amount.toFixed(2)}` : '$0.00'}</span>
       </div>
       <div class="totals-row">
         <span>Marketplace Fee</span>
         <span>$0.00</span>
       </div>
       <div class="totals-row grand">
-        <span>Total ${isPaid ? 'Paid' : 'Due'}</span>
-        <span>${isPaid ? `$${data.payment.amount.toFixed(2)} ${data.payment.currency.toUpperCase()}` : '$0.00 USD'}</span>
+        <span>${isReservation?'Reserved price (not charged)':isPaid?'Total paid':'Total due'}</span>
+        <span>${(isPaid||isReservation) ? `$${data.payment.amount.toFixed(2)} ${data.payment.currency.toUpperCase()}` : '$0.00 USD'}</span>
       </div>
     </div>
   </div>

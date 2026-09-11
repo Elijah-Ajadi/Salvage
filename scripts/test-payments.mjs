@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 const db=new PGlite();
 try{
  await db.exec('create schema auth; create table auth.users(id uuid primary key); create schema storage; create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]); create role anon; create role authenticated; create role service_role;');
- for(const file of (await readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')).sort())await db.exec(await readFile('supabase/migrations/'+file,'utf8'));
+ for(const file of (await readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')&&f<'202609110006').sort())await db.exec(await readFile('supabase/migrations/'+file,'utf8'));
  const seller=crypto.randomUUID(),buyer=crypto.randomUUID(),other=crypto.randomUUID();
  for(const [id,role] of [[seller,'contractor'],[buyer,'buyer'],[other,'buyer']]){
   await db.query('insert into auth.users values($1)',[id]);

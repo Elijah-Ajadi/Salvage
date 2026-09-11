@@ -1,4 +1,5 @@
 import {stripeClient,fulfillCheckout} from '@/lib/payments';
+import {rpc} from '@/lib/pickups';
 import {admin} from '@/lib/supabase/server';
 import type Stripe from 'stripe';
 export const runtime='nodejs';
@@ -12,13 +13,19 @@ export async function POST(req:Request){
  try{
   if(event.type==='checkout.session.completed'||event.type==='checkout.session.async_payment_succeeded'){
    const session=event.data.object as Stripe.Checkout.Session;
-   if(session.metadata?.orderId&&session.payment_status==='paid')await fulfillCheckout(session.id);
+   if(session.metadata?.orderId&&(session.payment_status==='paid'||session.metadata?.reservationId))await fulfillCheckout(session.id);
   }else if(event.type==='checkout.session.expired'){
    const session=event.data.object as Stripe.Checkout.Session;
    if(session.metadata?.orderId){
     const {error}=await admin().from('payment_orders').update({status:'expired'}).eq('id',session.metadata.orderId).eq('stripe_session_id',session.id).eq('status','pending');
     if(error)throw error;
+    if(session.metadata?.reservationId)await rpc('end_pickup',{p_id:session.metadata.reservationId,p_actor:null,p_reason:'expired'});
    }
+  }else if(['payment_intent.succeeded','payment_intent.canceled','payment_intent.amount_capturable_updated'].includes(event.type)){
+   const intent=event.data.object as Stripe.PaymentIntent;
+   const {data:order,error}=await admin().from('payment_orders').select('stripe_session_id,reservation_id').eq('payment_intent_id',intent.id).maybeSingle();
+   if(error)throw error;
+   if(order?.reservation_id&&order.stripe_session_id)await fulfillCheckout(order.stripe_session_id);
   }else if(event.type==='charge.refunded'){
    const charge=event.data.object as Stripe.Charge;
    const intent=typeof charge.payment_intent==='string'?charge.payment_intent:charge.payment_intent?.id;

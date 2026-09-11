@@ -6,14 +6,14 @@ if(!/^sk_test_|^rk_test_/.test(key))throw Error('This hackathon setup script onl
 const origin=new URL(process.argv[2]||process.env.NEXT_PUBLIC_APP_URL||'https://salvage-six.vercel.app').origin;
 if(!origin.startsWith('https://'))throw Error('Use your HTTPS deployment URL.');
 const stripe=new Stripe(key,{maxNetworkRetries:2,timeout:15000});
-const events=['checkout.session.completed','checkout.session.async_payment_succeeded','checkout.session.expired','charge.refunded'];
+const events=['checkout.session.completed','checkout.session.async_payment_succeeded','checkout.session.expired','charge.refunded','payment_intent.succeeded','payment_intent.canceled','payment_intent.amount_capturable_updated'];
 try{
  const list=await stripe.webhookEndpoints.list({limit:100});
  const existing=list.data.find(e=>e.url===origin+'/api/payments/webhook');
  let secret=process.env.STRIPE_WEBHOOK_SECRET;
  if(existing){
   if(!secret)throw Error('Endpoint already exists. Copy its signing secret from Stripe into STRIPE_WEBHOOK_SECRET in .env, then rerun.');
-  await stripe.webhookEndpoints.update(existing.id,{enabled_events:events,status:'enabled'});
+  await stripe.webhookEndpoints.update(existing.id,{enabled_events:events,disabled:false});
  }else{
   const endpoint=await stripe.webhookEndpoints.create({url:origin+'/api/payments/webhook',enabled_events:events,description:'Salvage verified checkout and refunds'});
   secret=endpoint.secret;
@@ -27,4 +27,4 @@ try{
  await writeFile('.env',env);
  console.log('Stripe test webhook configured. Signing secret saved to .env without displaying it.');
  console.log('Add STRIPE_WEBHOOK_SECRET and NEXT_PUBLIC_APP_URL from .env to Vercel, then redeploy.');
-}catch(e){console.error(e.message?.includes('Endpoint already exists')?e.message:'Stripe webhook setup failed. Check Stripe access and connectivity.');process.exitCode=1;}
+}catch(e){console.error('Stripe failure:',{type:e.type,code:e.code,status:e.statusCode});console.error(e.message?.includes('Endpoint already exists')?e.message:'Stripe webhook setup failed. Check Stripe access and connectivity.');process.exitCode=1;}

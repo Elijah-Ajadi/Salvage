@@ -1,4 +1,5 @@
 'use client';
+import {ReserveForm,ReportForm} from '@/app/pickup-ui';
 import {hasCoordinates} from '@/lib/location';
 import { useEffect, useState, useRef } from 'react';
 import { 
@@ -17,7 +18,7 @@ import { openReceiptWindow, type ReceiptData } from '@/lib/receipt';
 
 const icons=[LayoutGrid,PanelsTopLeft,Lamp,DoorOpen,Refrigerator,Grid2X2,Shapes];
 const initialProfile={name:'',email:'',phone:'',role:'buyer',locatedAddress:'',address:'Austin, TX',lat:30.2672,lng:-97.7431,radius:20,preferences:categories.slice(1),emailVerified:undefined as boolean|undefined};
-const blank={locatedAddress:'',title:'',description:'',category:'Other',material:'',condition:'Good',address:'',lat:30.2672,lng:-97.7431,photo:'',price:'' as string|number,suggestedPrice:null as number|null};
+const blank={functionality:'Untested',evidence_note:'',evidencePhoto:'',locatedAddress:'',title:'',description:'',category:'Other',material:'',condition:'Good',address:'',lat:30.2672,lng:-97.7431,photo:'',price:'' as string|number,suggestedPrice:null as number|null};
 
 export default function Salvage({mode,initialAccount}:{mode:string;initialAccount:any}){
  const [items,setItems]=useState<Item[]>(demoItems);
@@ -129,6 +130,7 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
          const r=await fetch('/api/payments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify-payment',sessionId:sid})});
          const d:any=await r.json();
          if(r.ok){
+           if(d.receiptUrl){window.location.href=d.receiptUrl;return;}
            notify('Payment confirmed! Receipt generated.');
            await refresh();
            if(d.receipt){
@@ -238,37 +240,6 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
    }catch(e:any){notify(e.message);}finally{setBusy(false);}
  }
 
- async function claim(item:Item){
-   if(item.demo){notify('This is a sample listing. Real listings can be claimed after you create a buyer profile.');return;}
-   if(!registered){setSelected(null);setModal('profile');return;}
-   if(profile.emailVerified===false){notify('Please verify your email to claim items.');return;}
-   const price=Number(item.price)||0;
-   
-   // Paid listing flow: Stripe Checkout
-   if(price>0){
-     setBusy(true);
-     try{
-       const r=await fetch('/api/payments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'create-checkout',listingId:item.id})});
-       const d:any=await r.json();
-       if(!r.ok)throw Error(d.error||'Could not start checkout.');
-       window.location.href=d.url;
-     }catch(e:any){notify(e.message);}finally{setBusy(false);}
-     return;
-   }
-
-   // Free claim flow: direct server RPC + instant receipt opening
-   setBusy(true);
-   try{
-     const d=await api('claim',{id:item.id});
-     setSelected({...item,...d.item});
-     notify("It's yours! Contact the contractor to arrange pickup. Pickup pass generated.");
-     await refresh();
-     if(d.receipt){
-       openReceiptWindow(d.receipt);
-     }
-   }catch(e:any){notify(e.message);}finally{setBusy(false);}
- }
-
  async function submitWithdrawal(e:React.FormEvent){
    e.preventDefault();
    setBusy(true);
@@ -288,9 +259,9 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
    }catch(e:any){notify(e.message);}finally{setBusy(false);}
  }
 
- async function showBuyerReceipt(item:any){try{const r=await fetch('/api/payments?type=receipt&listingId='+encodeURIComponent(item.id));const d=await r.json();if(!r.ok)throw Error(d.error);openReceiptWindow(d.receipt);}catch(e:any){notify(e.message);}}
+ async function showBuyerReceipt(item:any){try{const r=await fetch('/api/payments?type=receipt&listingId='+encodeURIComponent(item.id));const d=await r.json();if(!r.ok)throw Error(d.error);if(d.receiptUrl){window.location.href=d.receiptUrl;return;}openReceiptWindow(d.receipt);}catch(e:any){notify(e.message);}}
 
- const filtered=items.filter(i=>(view==='My listings'?i.mine:view==='My pickups'?i.claimedMine:i.status==='available')&&(category==='All materials'||i.category===category)&&`${i.title} ${i.material} ${i.description}`.toLowerCase().includes(search.toLowerCase())&&(view!=='Explore'||distance(profile,i)<=profile.radius)).sort((a,b)=>sort==='newest'?b.created_at-a.created_at:distance(profile,a)-distance(profile,b));
+ const filtered=items.filter(i=>(view==='My listings'?i.mine:view==='My pickups'?i.claimedMine:(i.status==='available'||i.status==='reserved'))&&(category==='All materials'||i.category===category)&&`${i.title} ${i.material} ${i.description}`.toLowerCase().includes(search.toLowerCase())&&(view!=='Explore'||distance(profile,i)<=profile.radius)).sort((a,b)=>sort==='newest'?b.created_at-a.created_at:distance(profile,a)-distance(profile,b));
  const openAdd=()=>{if(!registered||profile.role!=='contractor'){setModal('profile');setProfile(v=>({...v,role:'contractor'}));notify('Save your contractor profile once, then start listing.');}else{setDraft({...blank,address:profile.address,lat:profile.lat,lng:profile.lng});setAiNote('');setAiProgress(0);setModal('add');location('draft');}};
 
  const navItems=mode==='contractor'
@@ -312,6 +283,7 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
   </header>
 
   <main className="workspace">
+   <div className="pickup-links"><a href="/pickups">Pickup receipts &amp; reservations</a><a href="/reports">Reports &amp; appeals</a></div>
    <div className="page-heading">
      <div>
        <div className="eyebrow"><span/> {mode==='contractor'?'YOUR CONTRACTOR WORKSPACE':'THE LOCAL MATERIAL EXCHANGE'}</div>
@@ -657,6 +629,9 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
      {draft.suggestedPrice!==null&&draft.suggestedPrice!==undefined&&<div className="price-suggestion"><span>💡 AI suggests: <strong>${Number(draft.suggestedPrice).toFixed(2)}</strong> based on salvage value</span><button type="button" onClick={()=>setDraft(v=>({...v,price:draft.suggestedPrice??0}))}>Use this</button></div>}
      <label>Title<input required value={draft.title} onChange={e=>setDraft({...draft,title:e.target.value})}/></label>
      <div className="form-two"><label>Category<Select value={draft.category} onValueChange={v=>setDraft({...draft,category:v||'Other'})}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{categories.slice(1).map(c=><SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></label><label>Condition<Select value={draft.condition} onValueChange={v=>setDraft({...draft,condition:v||'Good'})}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{['Excellent','Good','Fair','Poor'].map(c=><SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></label></div>
+     <label>Does it work?<select value={draft.functionality} onChange={e=>setDraft({...draft,functionality:e.target.value})}>{['Working — tested','Untested','Not working / parts only'].map(v=><option key={v}>{v}</option>)}</select><small>AI estimates visible condition only. Choose “Working — tested” only if you tested it yourself.</small></label>
+     <label>Condition evidence / test notes<textarea maxLength={1000} value={draft.evidence_note} onChange={e=>setDraft({...draft,evidence_note:e.target.value})} placeholder="What did you test? Describe visible defects."/></label>
+     <label>Additional evidence photo <small>Required for items priced $250 or more, or when additional verification is requested.</small><input type="file" accept="image/*" disabled={busy} onChange={async e=>{const file=e.target.files?.[0];e.target.value='';if(!file)return;setBusy(true);try{if(file.size>10*1024*1024)throw Error('Choose a photo under 10 MB.');const url=URL.createObjectURL(file);try{const im=new Image();await new Promise<void>((resolve,reject)=>{im.onload=()=>resolve();im.onerror=()=>reject(Error('Could not read the photo.'));im.src=url;});const c=document.createElement('canvas');const ratio=Math.min(1,640/Math.max(im.width,im.height));c.width=im.width*ratio;c.height=im.height*ratio;c.getContext('2d')!.drawImage(im,0,0,c.width,c.height);setDraft(v=>({...v,evidencePhoto:c.toDataURL('image/jpeg',.7)}));}finally{URL.revokeObjectURL(url);}}catch(e:any){notify(e.message);}finally{setBusy(false);}}}/>{draft.evidencePhoto&&<img className="listing-photo-preview" src={draft.evidencePhoto} alt="Additional evidence"/>}</label>
      <label>Material<input required value={draft.material} onChange={e=>setDraft({...draft,material:e.target.value})}/></label>
      <label>Description<textarea required value={draft.description} onChange={e=>setDraft({...draft,description:e.target.value})}/></label>
      <label style={{gap:'6px'}}>Price (USD)<small style={{color:'#7a8a6a',fontSize:'12px'}}>Leave blank or 0 to list for free. AI suggestion shown above.</small><div style={{position:'relative',display:'flex',alignItems:'center'}}><span style={{position:'absolute',left:'12px',color:'#718262',fontSize:'15px',pointerEvents:'none'}}>$</span><input type="number" min="0" step="0.01" placeholder="0.00 — free" value={draft.price===''?'':draft.price} onChange={e=>setDraft({...draft,price:e.target.value===''?'':parseFloat(e.target.value)||0})} style={{paddingLeft:'26px'}}/></div></label>
@@ -687,16 +662,16 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
       ?<div className="detail-free"><span style={{background:'#2e4b21',color:'#fff',padding:'4px 14px',borderRadius:'6px',fontSize:'22px',fontWeight:700}}>${Number(selected.price).toFixed(2)}</span><span>Salvage material · Stripe-secured payment.</span></div>
       :<div className="detail-free">Free <span>Give it a new home.</span></div>
      }
-     <p>{selected.description}</p>
+     <p>{selected.description}</p><p><strong>Functionality:</strong> {selected.functionality||'Untested'}</p>{selected.evidence_note&&<p>Contractor’s evidence: {selected.evidence_note}</p>}{selected.evidence_photo&&<img className="detail-photo" src={selected.evidence_photo} alt="Additional condition evidence"/>}{!!selected.owner_review_count&&<p>{selected.owner_rating}/5 from {selected.owner_review_count} completed pickup reviews</p>}
      <div className="detail-location"><MapPin size={20}/><span>{selected.address||`${selected.area||'Local pickup'} · ${distance(profile,selected).toFixed(1)} miles away`}<small>{selected.address?'Coordinate a pickup time before visiting.':'Exact pickup address is shared after claiming.'}</small></span></div>
      {selected.contact&&<div className="contact-card"><strong>{selected.contact.name}</strong><a href={`mailto:${selected.contact.email}`}>{selected.contact.email}</a>{selected.contact.phone&&<a href={`tel:${selected.contact.phone}`}>{selected.contact.phone}</a>}</div>}
      {selected.demo&&<p className="sample-note">Sample listing · This shows what materials will look like on Salvage.</p>}
-     {selected.status==='available'&&!selected.mine&&<button className="primary full" disabled={busy||checkingPayment} onClick={()=>claim(selected)}>
-      {busy?'Redirecting to payment…':checkingPayment?'Verifying payment…':profile.emailVerified===false?'Verify email to claim':Number(selected.price)>0?`Buy for $${Number(selected.price).toFixed(2)}`:'Claim for pickup'} <ArrowRight size={19}/>
-     </button>}
-     {selected.mine&&selected.status!=='donated'&&<button className="primary full" onClick={()=>setModal('donate')}><HeartHandshake size={19}/> Mark donated to nonprofit</button>}
+     {!selected.demo&&selected.status==='available'&&!selected.mine&&profile.role==='buyer'&&<ReserveForm item={selected}/>}
+     {!selected.demo&&selected.status==='reserved'&&!selected.mine&&!selected.claimedMine&&profile.role==='buyer'&&<button className="pickup-secondary" disabled={busy} onClick={async()=>{setBusy(true);try{const r=await fetch('/api/pickups',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'waitlist',listingId:selected.id})});const d=await r.json();if(!r.ok)throw Error(d.error);notify('You are on the waitlist. We will notify you in the app if this item becomes available.');}catch(e:any){notify(e.message);}finally{setBusy(false);}}}>Join waitlist</button>}
+     {!selected.demo&&!selected.mine&&<ReportForm listingId={selected.id}/>}
+     {selected.mine&&selected.status==='available'&&<button className="primary full" onClick={()=>setModal('donate')}><HeartHandshake size={19}/> Mark donated to nonprofit</button>}
      {selected.status!=='available'&&<div style={{display:'flex',flexDirection:'column',gap:'10px',marginTop:'10px'}}>
-       <p className="ai-note"><Check size={17}/> {selected.status==='claimed'?'Claimed — arrange pickup directly.':'Donated — another life made possible.'}</p>
+       <p className="ai-note"><Check size={17}/> {selected.status==='reserved'?'Reserved — manage the pickup on your receipt.':selected.status==='claimed'?'Collected / claimed — view your receipt.':'Donated — another life made possible.'}</p>
        {selected.claimedMine&&<button className="primary full" style={{background:'#f3f7ee',color:'#395826',borderColor:'#c4d5b9'}} onClick={()=>showBuyerReceipt(selected)}>
          <ReceiptText size={18}/> View Pickup Pass &amp; Receipt
        </button>}

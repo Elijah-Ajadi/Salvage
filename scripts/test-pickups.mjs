@@ -1,0 +1,64 @@
+import {PGlite} from '@electric-sql/pglite';
+import {readFile,readdir} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+const db=new PGlite();
+try{
+ await db.exec('create schema auth; create table auth.users(id uuid primary key); create schema storage; create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]); create role anon; create role authenticated; create role service_role;');
+ for(const file of (await readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')).sort())await db.exec(await readFile('supabase/migrations/'+file,'utf8'));
+ const seller=crypto.randomUUID(),buyer=crypto.randomUUID(),other=crypto.randomUUID(),moderator=crypto.randomUUID();
+ for(const [id,role] of [[seller,'contractor'],[buyer,'buyer'],[other,'buyer'],[moderator,'contractor']]){
+  await db.query('insert into auth.users values($1)',[id]);
+  await db.query("insert into users(id,role,name,email,address,lat,lng,radius) values($1,$2,'Test','test@example.test','Test',30,-97,20)",[id,role]);
+ }
+ const one=async(sql,args)=>(await db.query(sql,args)).rows[0];
+ async function item(price=0){const id=crypto.randomUUID();await db.query("insert into listings(id,photo,category,material,condition,title,description,address,lat,lng,posted_by,price) values($1,'photo','Doors','Wood','Good','Test','Test','Test',30,-97,$2,$3)",[id,seller,price]);return id;}
+ const start=new Date(Date.now()+300000).toISOString(),end=new Date(Date.now()+3600000).toISOString();
+ const reserve=(id,b=buyer)=>one('select * from reserve_pickup($1,$2,$3,$4,false)',[id,b,start,end]);
+ const endPickup=(id,b=buyer,why='cancelled')=>one('select * from end_pickup($1,$2,$3)',[id,b,why]);
+ const accept=(id,b=buyer)=>one('select * from accept_pickup($1,$2)',[id,b]);
+ const collect=(id,b=seller)=>one('select * from collect_pickup($1,$2)',[id,b]);
+ const firstItem=await item();const p=await reserve(firstItem);
+ assert.equal(p.status,'reserved');assert.equal((await reserve(firstItem)).id,p.id);
+ await assert.rejects(reserve(firstItem,other),/Another buyer/);
+ const second=await reserve(await item());await assert.rejects(reserve(await item()),/two active/);
+ await assert.rejects(collect(p.id),/Wait for the buyer/);await assert.rejects(accept(p.id,other),/Not your/);
+ await accept(p.id);assert.equal((await collect(p.id)).status,'collected');assert.equal((await collect(p.id)).status,'collected');
+ assert.equal((await one('select count(*)::int n from notifications where listing_id=$1 and user_id=$2',[firstItem,seller])).n,3,'Reserve, accept and collect each notify once');
+ await db.query('insert into pickup_waitlist(listing_id,buyer_id) values($1,$2)',[second.listing_id,other]);
+ await db.query("update pickup_reservations set deadline=now()-interval '1 minute' where id=$1",[second.id]);
+ await db.query('select expire_pickups()');await db.query('select expire_pickups()');
+ assert.equal((await one('select status from listings where id=$1',[second.listing_id])).status,'available');
+ assert.equal((await one('select count(*)::int n from notifications where listing_id=$1 and user_id=$2',[second.listing_id,other])).n,1,'Waitlist notified once');
+ await assert.rejects(accept(second.id),/pickup window/);
+ const ext=await reserve(await item());
+ await db.query('select extend_pickup($1,$2,$3,null)',[ext.id,buyer,new Date(Date.now()+7200000).toISOString()]);
+ await assert.rejects(db.query('select extend_pickup($1,$2,null,true)',[ext.id,buyer]),/Only the contractor/);
+ await db.query('select extend_pickup($1,$2,null,true)',[ext.id,seller]);
+ assert.equal((await one('select extension_status from pickup_reservations where id=$1',[ext.id])).extension_status,'approved');
+ await endPickup(ext.id);
+ const paid=await reserve(await item(100));const order=await one('select * from payment_orders where reservation_id=$1',[paid.id]);
+ const sync=(state,expiry=new Date(Date.now()+86400000).toISOString())=>one('select * from sync_pickup_payment($1,$2,$3,10000,$4,false,$5,$6,$7,0)',[order.id,'cs_'+order.id,'pi_'+order.id,'usd',state,expiry,new Date().toISOString()]);
+ assert.equal((await sync('requires_capture')).status,'authorized');
+ const withdrawal=()=>one('select * from request_withdrawal($1,50,$2,$3,$4,$5,false)',[seller,'Test','Test account','',crypto.randomUUID()]);
+ await assert.rejects(withdrawal(),/exceeds/,'Authorization is not earnings');
+ await accept(paid.id);assert.equal((await sync('succeeded')).status,'paid');await sync('succeeded');
+ await assert.rejects(withdrawal(),/exceeds/,'Payment is not withdrawable before handover');
+ await collect(paid.id);assert.equal((await withdrawal()).status,'paid');
+ const unexpected=await reserve(await item(10));const unexpectedOrder=await one('select * from payment_orders where reservation_id=$1',[unexpected.id]);
+ assert.equal((await one('select * from sync_pickup_payment($1,$2,$3,1000,$4,false,$5,null,now(),0)',[unexpectedOrder.id,'cs_unexpected','pi_unexpected','usd','succeeded'])).status,'refund_required','Cannot charge before inspection');
+ await endPickup(unexpected.id);
+ for(let n=0;n<2;n++){
+  const r=await reserve(await item());await db.query("update pickup_reservations set deadline=now()-interval '1 minute' where id=$1",[r.id]);await db.query('select expire_pickups()');
+  const report=await one("insert into safety_reports(reporter_id,target_id,listing_id,reservation_id,reason,details) values($1,$2,$3,$4,'no_show','Buyer never arrived at the agreed window') returning id",[seller,buyer,r.listing_id,r.id]);
+  if(n===0){const allowed=await reserve(await item());await endPickup(allowed.id);}
+  await db.query("select review_safety_report($1,$2,'upheld','Confirmed after review')",[report.id,moderator]);
+ }
+ await assert.rejects(reserve(await item()),/temporarily restricted/);
+ const report=await one("select id from safety_reports where target_id=$1 limit 1",[buyer]);
+ await db.query("select review_safety_report($1,$2,'dismissed','Buyer supplied evidence of cancellation')",[report.id,moderator]);
+ const restored=await reserve(await item());await endPickup(restored.id);
+ await db.exec('set role authenticated');
+ for(const table of ['pickup_reservations','pickup_waitlist','pickup_reviews','safety_reports'])await assert.rejects(db.query('select * from '+table),/permission denied/);
+ await assert.rejects(db.query('select expire_pickups()'),/permission denied/);
+ console.log('PASS: full pickup migration, free collection, party authorization, reservation limits, expiry/relisting/waitlist, contractor-approved extensions, manual authorization, no pre-inspection capture, no earnings before handover, reviewed no-show restrictions and reversal, private data.');
+}catch(e){console.error(e.message);process.exitCode=1;}finally{await db.close();}

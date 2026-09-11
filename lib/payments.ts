@@ -22,6 +22,7 @@ export async function fulfillCheckout(sessionId:string,buyerId?:string){
  const stripe=stripeClient(),db=admin();
  const session=await stripe.checkout.sessions.retrieve(sessionId,{expand:['payment_intent.latest_charge']});
  if(buyerId&&session.metadata?.buyerId!==buyerId)throw Error('This payment belongs to another account.');
+ if(session.metadata?.reservationId){const {syncReservationSession}=await import('./pickups');return syncReservationSession(session);}
  if(session.mode!=='payment'||session.payment_status!=='paid'||!session.metadata?.orderId)throw Error('Payment is not complete.');
  const intent=session.payment_intent as Stripe.PaymentIntent;
  if(!intent||typeof intent==='string'||intent.status!=='succeeded')throw Error('Payment is still processing.');

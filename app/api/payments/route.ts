@@ -1,3 +1,4 @@
+import {rpc} from '@/lib/pickups';
 import {getUser} from '@/lib/auth';
 import {admin} from '@/lib/supabase/server';
 import {stripeClient,paymentMode,appOrigin,fulfillCheckout,receiptFor} from '@/lib/payments';
@@ -13,6 +14,8 @@ export async function GET(req:Request){try{
  if(type==='receipt'){
   const id=new URL(req.url).searchParams.get('listingId');
   if(!uuid(id))return fail('Invalid listing.');
+  const {data:pickup}=await db.from('pickup_reservations').select('id').eq('listing_id',id).eq('buyer_id',user.userId).order('created_at',{ascending:false}).limit(1).maybeSingle();
+  if(pickup)return Response.json({receiptUrl:'/receipts/'+pickup.id});
   return Response.json({receipt:await receiptFor(id,user.userId)});
  }
  if(type==='earnings'){
@@ -20,7 +23,7 @@ export async function GET(req:Request){try{
   if(error)throw error;if(profile?.role!=='contractor')return fail('Contractor access only.',403);
   const live=paymentMode();
   const [o,p]=await Promise.all([
-   db.from('payment_orders').select('*,listing:listings(id,title,category,material,condition),buyer:users!payment_orders_buyer_id_fkey(name,email)').eq('contractor_id',user.userId).eq('livemode',live).eq('status','paid'),
+   db.from('payment_orders').select('*,listing:listings(id,title,category,material,condition),buyer:users!payment_orders_buyer_id_fkey(name,email)').eq('contractor_id',user.userId).eq('livemode',live).eq('status','paid').eq('earnings_released',true),
    db.from('payout_requests').select('*').eq('contractor_id',user.userId).eq('livemode',live).order('created_at',{ascending:false})
   ]);
   if(o.error||p.error)throw Error('Could not load earnings.');
@@ -42,27 +45,32 @@ export async function POST(req:Request){try{
  const user=await getUser();if(!user)return fail('Log in to continue.',401);
  const body=await req.json(),db=admin();
  if(body.action==='create-checkout'){
-  if(!uuid(body.listingId))return fail('Invalid listing.');
+  if(!uuid(body.reservationId))return fail('Choose a pickup window before authorizing your card.');
   if(!user.emailVerified)return fail('Verify your email before purchasing.',403);
   if(!process.env.STRIPE_WEBHOOK_SECRET)return fail('Payments are being configured. Please try again shortly.',503);
   const stripe=stripeClient(),base=appOrigin();
-  const {data:order,error}=await db.rpc('reserve_checkout',{p_listing:body.listingId,p_buyer:user.userId,p_live:paymentMode()});
+  await rpc('expire_pickups');
+  const {data:pickup}=await db.from('pickup_reservations').select('*').eq('id',body.reservationId).eq('buyer_id',user.userId).single();
+  if(!pickup||pickup.status!=='checkout')return fail('This reservation is not awaiting card authorization.',409);
+  const {data:order,error}=await db.from('payment_orders').select('*').eq('reservation_id',pickup.id).eq('buyer_id',user.userId).eq('livemode',paymentMode()).single();
   if(error)return fail('This listing is unavailable or another buyer is checking out. Please try again later.',409);
   if(order.stripe_session_id){
    const existing=await stripe.checkout.sessions.retrieve(order.stripe_session_id);
    if(existing.status==='open')return Response.json({url:existing.url});
-   if(existing.payment_status==='paid')return Response.json({url:`${base}/buyer?payment=success&session=${existing.id}`});
+   if(existing.status==='complete')return Response.json({url:`${base}/buyer?payment=success&session=${existing.id}`});
    const updated=await db.from('payment_orders').update({status:'expired'}).eq('id',order.id).eq('status','pending');
    if(updated.error)throw updated.error;
    return fail('Checkout expired. Tap Buy again to start a new checkout.',409);
   }
-  const {data:item,error:itemError}=await db.from('listings').select('title').eq('id',body.listingId).single();
+  const {data:item,error:itemError}=await db.from('listings').select('title').eq('id',order.listing_id).single();
   if(itemError)throw itemError;
   const expires=Math.floor(Date.parse(order.expires_at)/1000)-300;
   if(expires<Date.now()/1000+1800)return fail('Checkout is being prepared or has expired. Please try again after this reservation ends.',409);
   const session=await stripe.checkout.sessions.create({mode:'payment',payment_method_types:['card'],
    line_items:[{price_data:{currency:'usd',product_data:{name:item.title},unit_amount:Number(order.amount_cents)},quantity:1}],
-   metadata:{orderId:order.id,listingId:body.listingId,buyerId:user.userId},expires_at:expires,
+   payment_intent_data:{capture_method:'manual'},
+   custom_text:{submit:{message:'This reserves funds only. You accept the item and complete payment after inspection at pickup.'}},
+   metadata:{orderId:order.id,listingId:order.listing_id,reservationId:pickup.id,buyerId:user.userId},expires_at:expires,
    success_url:`${base}/buyer?payment=success&session={CHECKOUT_SESSION_ID}`,cancel_url:`${base}/buyer?payment=cancelled&order=${order.id}`,
    customer_email:user.email},{idempotencyKey:`salvage-checkout-${order.id}`});
   const saved=await db.from('payment_orders').update({stripe_session_id:session.id}).eq('id',order.id).eq('status','pending');
@@ -71,18 +79,21 @@ export async function POST(req:Request){try{
  }
  if(body.action==='cancel-checkout'){
   if(!uuid(body.orderId))return fail('Invalid checkout.');
-  const {data:order,error}=await db.from('payment_orders').select('stripe_session_id').eq('id',body.orderId).eq('buyer_id',user.userId).single();
+  const {data:order,error}=await db.from('payment_orders').select('stripe_session_id,reservation_id').eq('id',body.orderId).eq('buyer_id',user.userId).single();
   if(error||!order.stripe_session_id)return fail('Checkout not found.',404);
   const stripe=stripeClient(),session=await stripe.checkout.sessions.retrieve(order.stripe_session_id);
   if(session.metadata?.buyerId!==user.userId)return fail('This checkout belongs to another account.',403);
   if(session.status==='open')await stripe.checkout.sessions.expire(session.id);
   if(session.payment_status==='paid')return fail('Payment completed. Open your payment history.',409);
   const updated=await db.from('payment_orders').update({status:'expired'}).eq('stripe_session_id',session.id).eq('buyer_id',user.userId).eq('status','pending');
-  if(updated.error)throw updated.error;return Response.json({ok:true});
+  if(updated.error)throw updated.error;
+  if(order.reservation_id)await rpc('end_pickup',{p_id:order.reservation_id,p_actor:user.userId,p_reason:'cancelled'});
+  return Response.json({ok:true});
  }
  if(body.action==='verify-payment'){
   if(typeof body.sessionId!=='string'||!body.sessionId.startsWith('cs_'))return fail('Invalid session.');
   const order=await fulfillCheckout(body.sessionId,user.userId);
+  if(order.reservation_id)return Response.json({ok:true,receiptUrl:'/receipts/'+order.reservation_id});
   if(order.status!=='paid')return fail('This purchase could not be assigned to you. Your payment has been refunded or is awaiting refund.',409);
   return Response.json({ok:true,receipt:await receiptFor(order.listing_id,user.userId)});
  }

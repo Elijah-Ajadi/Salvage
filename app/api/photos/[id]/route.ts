@@ -13,20 +13,20 @@ export async function GET(_r: Request, {params}: {params: Promise<{id: string}>}
     if (!exists) return new Response('Not found', {status: 404});
 
     // If the listing is claimed/donated, only allow the owner or claimant to view the full photo
-    if (exists.status !== 'available') {
+    if (!['available','reserved'].includes(exists.status)) {
       const user = await getUser();
       if (!user || (exists.posted_by !== user.userId && exists.claimed_by !== user.userId)) {
         return new Response('Not found', {status: 404});
       }
     }
 
-    const {data, error} = await db.storage.from('listing-photos').download(`${id}.jpg`);
+    const {data, error} = await db.storage.from('listing-photos').download(`${id}${new URL(_r.url).searchParams.get('kind')==='evidence'?'-evidence':''}.jpg`);
     if (error || !data) return new Response('Not found', {status: 404});
 
     return new Response(data, {
       headers: {
         'Content-Type': 'image/jpeg',
-        'Cache-Control': 'public, max-age=3600',
+        'Cache-Control': 'private, no-store',
         'X-Content-Type-Options': 'nosniff'
       }
     });

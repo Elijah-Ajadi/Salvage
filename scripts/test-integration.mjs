@@ -31,7 +31,8 @@ async function account(role,confirmed=true){
 }
 try{
  const seller=await account('contractor'),buyer=await account('buyer'),other=await account('buyer');await account('buyer',false);
- assert.equal((await call(new Map(),'/api/salvage')).status,401);
+ assert.equal((await call(new Map(),'/api/salvage')).status,200);
+ assert.equal((await call(new Map(),'/api/pickups')).status,401);
  assert.equal((await call(buyer,'/contractor')).redirect,'/buyer');
  const require=createRequire(import.meta.url);
  const sharp=require(require.resolve('sharp',{paths:[path.dirname(require.resolve('next/package.json'))]}));
@@ -40,30 +41,42 @@ try{
   const result=await call(seller,'/api/salvage',{action:'publish',listing:{title:'Integration fixture '+tag,description:'Temporary automated test',category:'Doors',condition:'Good',material:'Wood',address:'Test pickup',locatedAddress:'Test pickup',lat:30,lng:-97,photo,price}});
   assert.equal(result.status,200,'Publish succeeds: '+JSON.stringify(result.data));listings.push(result.data.id);return result.data.id;
  }
- const free=await publish(0);
- const claim=await call(buyer,'/api/salvage',{action:'claim',id:free});assert.equal(claim.status,200);assert.equal(claim.data.receipt.payment.amount,0);
- assert.equal((await call(other,'/api/salvage',{action:'claim',id:free})).status,409);
- assert.equal((await call(buyer,'/api/payments?type=receipt&listingId='+free)).status,200);
- assert.notEqual((await call(other,'/api/payments?type=receipt&listingId='+free)).status,200);
- const paid=await publish(15);
- assert.equal((await call(buyer,'/api/salvage',{action:'claim',id:paid})).status,409);
- const checkout=await call(buyer,'/api/payments',{action:'create-checkout',listingId:paid});assert.equal(checkout.status,200,'Checkout: '+JSON.stringify(checkout.data));assert.ok(checkout.data.url.startsWith('https://checkout.stripe.com/'));
- const {data:order,error}=await db.from('payment_orders').select('*').eq('listing_id',paid).single();if(error)throw error;
- sessions.push(order.stripe_session_id);
- const resumed=await call(buyer,'/api/payments',{action:'create-checkout',listingId:paid});assert.equal(resumed.data.url,checkout.data.url);
- assert.equal((await call(other,'/api/payments',{action:'create-checkout',listingId:paid})).status,409);
- assert.notEqual((await call(buyer,'/api/payments',{action:'verify-payment',sessionId:order.stripe_session_id})).status,200,'Unpaid session cannot complete');
- assert.equal((await call(buyer,'/api/payments',{action:'cancel-checkout',orderId:order.id})).status,200);
+ const reserve=async(jar,id)=>{const result=await call(jar,'/api/pickups',{action:'reserve',listingId:id,start:new Date(Date.now()+300000).toISOString(),end:new Date(Date.now()+3600000).toISOString()});assert.equal(result.status,200,'Reserve: '+JSON.stringify(result.data));return result.data.pickup;};
+ const free=await publish(0),pickup=await reserve(buyer,free);
+ assert.equal(pickup.status,'reserved');
+ assert.equal((await call(other,'/api/pickups',{action:'reserve',listingId:free,start:pickup.pickup_start,end:pickup.pickup_end})).status,409);
+ assert.equal((await call(other,'/api/pickups',{action:'waitlist',listingId:free})).status,200);
+ assert.equal((await call(seller,'/api/pickups',{action:'collect',id:pickup.id})).status,409);
+ assert.equal((await call(other,'/api/pickups',{action:'accept',id:pickup.id,inspected:true})).status,409);
+ assert.equal((await call(buyer,'/api/pickups',{action:'accept',id:pickup.id,inspected:true})).status,200);
+ assert.equal((await call(seller,'/api/pickups',{action:'collect',id:pickup.id})).status,200);
+ const receipt=await call(buyer,'/api/payments?type=receipt&listingId='+free);assert.equal(receipt.status,200);assert.ok(receipt.data.receiptUrl);
+ const outsider=await call(other,'/api/pickups?id='+pickup.id);assert.equal(outsider.data.pickups.length,0);
+ assert.equal((await call(buyer,'/api/pickups',{action:'review',id:pickup.id,rating:5,comment:'Completed test pickup'})).status,200);
+ assert.equal((await call(other,'/api/pickups',{action:'review',id:pickup.id,rating:1,comment:'Not participant'})).status,403);
+ const paid=await publish(15);assert.equal((await call(buyer,'/api/salvage',{action:'claim',id:paid})).status,409);
+ const paidPickup=await reserve(buyer,paid);
+ const checkout=await call(buyer,'/api/payments',{action:'create-checkout',reservationId:paidPickup.id});assert.equal(checkout.status,200,'Checkout: '+JSON.stringify(checkout.data));assert.ok(checkout.data.url.startsWith('https://checkout.stripe.com/'));
+ const {data:order,error}=await db.from('payment_orders').select('*').eq('reservation_id',paidPickup.id).single();if(error)throw error;sessions.push(order.stripe_session_id);
+ const resumed=await call(buyer,'/api/payments',{action:'create-checkout',reservationId:paidPickup.id});assert.equal(resumed.data.url,checkout.data.url);
+ assert.equal((await call(other,'/api/payments',{action:'create-checkout',reservationId:paidPickup.id})).status,409);
+ assert.notEqual((await call(buyer,'/api/payments',{action:'verify-payment',sessionId:order.stripe_session_id})).status,200);
+ assert.equal((await call(buyer,'/api/pickups',{action:'cancel',id:paidPickup.id})).status,200);
  assert.equal((await stripe.checkout.sessions.retrieve(order.stripe_session_id)).status,'expired');
+ const next=await reserve(other,paid);assert.equal(next.status,'checkout');await call(other,'/api/pickups',{action:'cancel',id:next.id});
+ assert.equal((await call(buyer,'/api/pickups',{action:'report',listingId:paid,reason:'misrepresented',details:'Test evidence of a listing mismatch'})).status,200);
+ assert.equal((await call(buyer,'/api/pickups?reports=1')).data.admin,false);
+ assert.equal((await call(buyer,'/api/pickups',{action:'review-report',id:crypto.randomUUID(),decision:'upheld',resolution:'Unauthorized test review'})).status,403);
  const earnings=await call(seller,'/api/payments?type=earnings');assert.equal(earnings.status,200);assert.equal(earnings.data.totalEarned,0);assert.equal(earnings.data.testMode,true);
  assert.equal((await call(seller,'/api/payments',{action:'request-payout',amount:15,paymentMethod:'Test',accountDetails:'Sample only',requestKey:crypto.randomUUID()})).status,409);
- console.log('PASS: real Supabase verified/unverified login, profile, role routing, photo storage, free claim/receipt, paid-claim rejection, real Stripe test Checkout creation/resume/exclusivity/cancellation, unpaid verification denial, ledger earnings and withdrawal protection.');
+ console.log('PASS: real Supabase auth/profile/photo storage, reservation exclusivity, waitlists, two-party free handover, live receipts/access control, verified reviews, real Stripe test checkout creation/resume/cancellation, re-reservation after release, reporting/admin denial, ledger protection.');
 }catch(e){console.error('FAIL:',e.message);process.exitCode=1;}
 finally{
  for(const id of sessions){try{const s=await stripe.checkout.sessions.retrieve(id);if(s.status==='open')await stripe.checkout.sessions.expire(id);}catch{}}
  let cleanupFailed=false;
  if(listings.length){
-  for(const table of ['notifications','payment_orders']){const {error}=await db.from(table).delete().in('listing_id',listings);if(error)cleanupFailed=true;}
+  const {data:pickups}=await db.from('pickup_reservations').select('id').in('listing_id',listings);if(pickups?.length){const {error}=await db.from('pickup_reviews').delete().in('reservation_id',pickups.map(p=>p.id));if(error)cleanupFailed=true;}
+  for(const table of ['notifications','safety_reports','pickup_waitlist','payment_orders','pickup_reservations']){const {error}=await db.from(table).delete().in('listing_id',listings);if(error)cleanupFailed=true;}
   if((await db.from('listings').delete().in('id',listings)).error)cleanupFailed=true;
   if((await db.storage.from('listing-photos').remove(listings.map(id=>id+'.jpg'))).error)cleanupFailed=true;
  }
