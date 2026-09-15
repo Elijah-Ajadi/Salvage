@@ -69,7 +69,12 @@ try{
  assert.equal((await call(buyer,'/api/pickups',{action:'review-report',id:crypto.randomUUID(),decision:'upheld',resolution:'Unauthorized test review'})).status,403);
  const earnings=await call(seller,'/api/payments?type=earnings');assert.equal(earnings.status,200);assert.equal(earnings.data.totalEarned,0);assert.equal(earnings.data.testMode,true);
  assert.equal((await call(seller,'/api/payments',{action:'request-payout',amount:15,paymentMethod:'Test',accountDetails:'Sample only',requestKey:crypto.randomUUID()})).status,409);
- console.log('PASS: real Supabase auth/profile/photo storage, reservation exclusivity, waitlists, two-party free handover, live receipts/access control, verified reviews, real Stripe test checkout creation/resume/cancellation, re-reservation after release, reporting/admin denial, ledger protection.');
+ const feed=await call(buyer,'/api/salvage');assert.ok(feed.data.items.some(i=>i.id===paid),'Nearby available listing reaches buyer feed');
+ const signedOut=await call(buyer,'/api/auth',{action:'logout'});assert.equal(signedOut.status,200);
+ assert.equal((await call(buyer,'/api/pickups')).status,401,'Logout removes authenticated access');
+ assert.equal((await call(buyer,'/buyer')).redirect,'/login','Protected page redirects after logout');
+ assert.equal((await call(buyer,'/login')).status,200,'Login page stays accessible after logout');
+ console.log('PASS: auth/profile/photo storage, nearby feed, reservations, receipts, verified reviews, Stripe test checkout/cancellation, reporting, ledger protection, and logout/access removal.');
 }catch(e){console.error('FAIL:',e.message);process.exitCode=1;}
 finally{
  for(const id of sessions){try{const s=await stripe.checkout.sessions.retrieve(id);if(s.status==='open')await stripe.checkout.sessions.expire(id);}catch{}}

@@ -1,5 +1,11 @@
 # Deploy Salvage to Vercel — Step-by-Step Guide
 
+## Location visibility update
+
+Migration `202609150007_listing_radius.sql` adds a contractor-selected visibility radius to each listing. Existing listings inherit their contractor's saved radius. It has been applied to the configured Salvage database; other installations can run `node --env-file=.env scripts/upgrade-location.mjs` after the pickup migration. Deploy the accompanying application changes together.
+
+The store and buyer dashboard now use the same location-filtered feed. Signed-in users use their saved profile coordinates; visitors choose an area. Buyer notification radius and category preferences control alerts, while the listing's radius controls discovery. A listing beyond its contractor's radius will not appear even if the viewer increases their notification radius. Logout clears this browser's authentication cookies, including chunked or stale sessions.
+
 ## Payment integrity update (required for the hackathon)
 
 ### Pickup protection update

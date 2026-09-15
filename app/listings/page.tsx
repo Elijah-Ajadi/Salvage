@@ -4,6 +4,7 @@ import {
   Recycle, Search, ArrowUpRight, ArrowRight, SlidersHorizontal,
   Leaf, Clock, Sparkles, X, Tag, Check, LogIn, Package
 } from 'lucide-react';
+import {hasCoordinates} from '@/lib/location';
 import { categories } from '@/lib/materials';
 
 type Item = {
@@ -31,6 +32,10 @@ const conditionColors: Record<string, { bg: string; color: string }> = {
 
 export default function ListingsPage() {
   const [items, setItems] = useState<Item[]>([]);
+  const [locationText,setLocationText]=useState('');
+  const [visitorLocation,setVisitorLocation]=useState<{lat:number;lng:number}|null>(null);
+  const [locationLabel,setLocationLabel]=useState('');
+  const [loadError,setLoadError]=useState('');
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All materials');
@@ -54,20 +59,25 @@ export default function ListingsPage() {
   }, []);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch('/api/salvage');
-        const d = await r.json();
-        setItems(d.items || []);
-        setIsLoggedIn(!!d.profile);
-      } catch {
-        setItems([]);
-        setIsLoggedIn(false);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+    let active=true;
+    async function refresh(){
+      try{
+        const query=visitorLocation?'?lat='+visitorLocation.lat+'&lng='+visitorLocation.lng:'';
+        const r=await fetch('/api/salvage'+query);const d=await r.json();
+        if(!r.ok)throw Error(d.error||'Could not load listings.');
+        if(!active)return;
+        setItems(d.items||[]);setIsLoggedIn(!!d.profile);setLoadError('');
+        if(d.profile)setLocationLabel(hasCoordinates(d.profile)?d.profile.address:'Set your location in your dashboard');
+      }catch(e:any){if(active)setLoadError(e.message);}finally{if(active)setLoading(false);}
+    }
+    refresh();const timer=setInterval(refresh,15000);
+    return()=>{active=false;clearInterval(timer);};
+  },[visitorLocation]);
+
+  async function findLocation(e:React.FormEvent){
+    e.preventDefault();setBusy(true);
+    try{const r=await fetch('/api/location?q='+encodeURIComponent(locationText));const d=await r.json();if(!r.ok)throw Error(d.error);setVisitorLocation(d);setLocationLabel(locationText);}catch(e:any){notify(e.message);}finally{setBusy(false);}
+  }
 
   useEffect(() => {
     let count = 0;
@@ -81,44 +91,10 @@ export default function ListingsPage() {
       window.location.href = `/login?next=/listings`;
       return;
     }
-    const price = Number(item.price) || 0;
-    setBusy(true);
-    try {
-      if (price > 0) {
-        const r = await fetch('/api/payments', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'create-checkout', listingId: item.id }),
-        });
-        const d: any = await r.json();
-        if (!r.ok) throw Error(d.error || 'Could not start checkout.');
-        window.location.href = d.url;
-        return;
-      }
-      const r = await fetch('/api/salvage', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'claim', id: item.id }),
-      });
-      const d: any = await r.json();
-      if (!r.ok) {
-        if (r.status === 401) { window.location.href = '/login?next=/listings'; return; }
-        throw Error(d.error || 'Could not claim item.');
-      }
-      notify("It's yours! A pickup pass has been generated. Check your dashboard.");
-      setItems(prev => prev.map(i => i.id === item.id ? { ...i, status: 'claimed' } : i));
-      if (d.receipt) {
-        const { openReceiptWindow } = await import('@/lib/receipt');
-        openReceiptWindow(d.receipt);
-      }
-    } catch (e: any) {
-      notify(e.message);
-    } finally {
-      setBusy(false);
-    }
+    window.location.href='/buyer?item='+encodeURIComponent(item.id);
   }
 
-  const available = items.filter(i => i.status === 'available');
+  const available = items.filter(i => i.status === 'available'||i.status==='reserved');
 
   const filtered = available
     .filter(i => category === 'All materials' || i.category === category)
@@ -184,13 +160,14 @@ export default function ListingsPage() {
           <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#b0c9a0' }}><Leaf size={15} /> Diverted from landfills</span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#b0c9a0' }}><Sparkles size={15} /> AI-cataloged listings</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#b0c9a0' }}><Check size={15} /> Instant pickup passes</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#b0c9a0' }}><Check size={15} /> Pickup reservations</span>
           </div>
         </div>
       </div>
 
       <div style={{ maxWidth: '1260px', margin: '0 auto', padding: 'clamp(24px, 3vw, 40px) 5%' }}>
 
+        <div style={{marginBottom:20}}><p>{locationLabel||'Choose your location to see nearby materials.'} · Listings use each contractor’s selected radius.</p>{isLoggedIn?<a href="/dashboard">Change your location in your dashboard</a>:<form onSubmit={findLocation} style={{display:'flex',gap:12,flexWrap:'wrap'}}><input required aria-label="City or pickup area" placeholder="City or pickup area" value={locationText} onChange={e=>setLocationText(e.target.value)} style={{padding:12,flex:1,minWidth:180}}/><button className="primary" disabled={busy}>Find nearby listings</button></form>}{loadError&&<p role="alert">{loadError}</p>}</div>
         {/* Search + Controls */}
         <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
           <div className="search-box" style={{ flex: 1, minWidth: '220px' }}>
@@ -333,7 +310,7 @@ export default function ListingsPage() {
             <p>
               {search || category !== 'All materials' || priceFilter !== 'all'
                 ? 'Try adjusting your filters or search terms.'
-                : 'No materials are currently available. Check back soon!'}
+                : 'No listings reach this location yet. Check your location or come back soon.'}
             </p>
             {(search || category !== 'All materials' || priceFilter !== 'all') && (
               <button onClick={() => { setSearch(''); setCategory('All materials'); setPriceFilter('all'); }} className="primary" style={{ marginTop: '8px' }}>
@@ -384,7 +361,7 @@ export default function ListingsPage() {
                     >
                       {isLoggedIn === false
                         ? <><LogIn size={13} /> Log in to {price > 0 ? 'buy' : 'claim'}</>
-                        : <>{price > 0 ? `Buy $${price.toFixed(2)}` : 'Claim free'} <ArrowUpRight size={13} /></>
+                        : <>{item.status==='reserved'?'View reservation':price > 0 ? `Reserve $${price.toFixed(2)}` : 'Reserve free'} <ArrowUpRight size={13} /></>
                       }
                     </button>
                   </div>
@@ -408,7 +385,7 @@ export default function ListingsPage() {
               Sign up to claim or purchase materials
             </h2>
             <p style={{ fontSize: '15px', color: '#c0d4af', margin: '0 0 24px', lineHeight: 1.6 }}>
-              Create a free buyer account to claim items, get instant pickup passes, and track your pickups.
+              Create a free buyer account to claim items, manage pickup receipts, and track your pickups.
             </p>
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
               <a href="/signup?role=buyer" className="primary" style={{ background: '#fff', color: '#2d4122', border: 'none', fontWeight: 700, fontSize: '15px', padding: '13px 24px' }}>
@@ -440,4 +417,3 @@ export default function ListingsPage() {
     </div>
   );
 }
-

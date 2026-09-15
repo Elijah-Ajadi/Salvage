@@ -30,7 +30,7 @@ async function serialize(i:any,userId?:string){
   };
 }
 
-export async function GET(){
+export async function GET(req:Request){
   try{
     const user=await getUser();
     const db=admin();
@@ -38,25 +38,24 @@ export async function GET(){
     
     // If not logged in, return public available listings
     if(!user){
-      const {data:listings,error}=await db.from('listings')
-        .select('*')
-        .in('status',['available','reserved']).eq('under_review',false)
-        .order('created_at',{ascending:false})
-        .limit(100);
+      const params=new URL(req.url).searchParams;
+      const coords={lat:params.has('lat')?Number(params.get('lat')):null,lng:params.has('lng')?Number(params.get('lng')):null};
+      const {data:listings,error}=await db.rpc('local_listings',{p_user:null,p_lat:hasCoordinates(coords)?coords.lat:null,p_lng:hasCoordinates(coords)?coords.lng:null});
       if(error)return fail('The material exchange is temporarily unavailable.',503);
       return Response.json({
         profile:null,
-        items:await Promise.all((listings||[]).map(i=>serialize(i))),
+        items:await Promise.all((listings||[]).map((i:any)=>serialize(i))),
         notifications:[]
       });
     }
 
     const id=user.userId;
-    const [p,l,n]=await Promise.all([
+    const [p,n]=await Promise.all([
       db.from('users').select('*').eq('id',id).maybeSingle(),
-      db.from('listings').select('*').or(`status.eq.available,status.eq.reserved,posted_by.eq.${id},claimed_by.eq.${id}`).order('created_at',{ascending:false}).limit(500),
       db.from('notifications').select('*').eq('user_id',id).order('created_at',{ascending:false}).limit(50)
     ]);
+    const {data:localItems,error:localError}=await db.rpc('local_listings',{p_user:id,p_lat:p.data?.lat??null,p_lng:p.data?.lng??null});
+    const l={data:localItems as any[]|null,error:localError};
     if(p.error||l.error||n.error)return fail('The material exchange is temporarily unavailable.',503);
     const profileData=p.data?{...p.data,emailVerified:!!user.emailVerified}:null;
     return Response.json({
@@ -157,6 +156,8 @@ export async function POST(req:Request){try{
  if((price>=250||(reports||0)>=2)&&(!x.evidencePhoto||String(x.evidence_note||'').trim().length<10))return fail('Add an extra condition photo and a short evidence note for this listing.');
  if(x.evidencePhoto&&(typeof x.evidencePhoto!=='string'||!x.evidencePhoto.startsWith('data:image/jpeg;base64,')||x.evidencePhoto.length>1000000||x.photo.length+x.evidencePhoto.length>3700000))return fail('Choose smaller listing/evidence photos.');
  if(price>100000)return fail('Price seems too high. Double-check the amount.');
+ const visibilityRadius=x.visibility_radius??p.radius;
+ if(!Number.isInteger(visibilityRadius)||visibilityRadius<1||visibilityRadius>100)return fail('Choose a listing radius between 1 and 100 miles.');
  let coords;try{coords=x.locatedAddress===x.address&&hasCoordinates(x)?{lat:x.lat,lng:x.lng}:x.address===p.address&&hasCoordinates(p)?{lat:p.lat,lng:p.lng}:await geocode(x.address);}catch{return fail('We could not locate the pickup address. Use the location button to confirm your position, then publish.',422);}const id=crypto.randomUUID();const bytes=Buffer.from(x.photo.split(',')[1],'base64');if(bytes[0]!==255||bytes[1]!==216)return fail('Invalid photo.');const key=`${id}.jpg`;
   const upload=await database.storage.from('listing-photos').upload(key,bytes,{contentType:'image/jpeg',upsert:false});
   if(upload.error){
@@ -164,7 +165,7 @@ export async function POST(req:Request){try{
     return fail(`Could not upload your photo: ${upload.error.message}`,503);
   }
   if(x.evidencePhoto){const evidence=Buffer.from(x.evidencePhoto.split(',')[1],'base64');if(evidence[0]!==255||evidence[1]!==216){await database.storage.from('listing-photos').remove([key]);return fail('Invalid evidence photo.');}const {error}=await database.storage.from('listing-photos').upload(`${id}-evidence.jpg`,evidence,{contentType:'image/jpeg',upsert:false});if(error){await database.storage.from('listing-photos').remove([key]);return fail('Could not upload evidence photo.',503);}}
-  const {error}=await database.from('listings').insert({id,photo:`/api/photos/${id}`,category:x.category,material:x.material,condition:x.condition,title:x.title,description:x.description,address:x.address,...coords,price,functionality:x.functionality||'Untested',evidence_note:x.evidence_note||'',evidence_photo:x.evidencePhoto?`/api/photos/${id}?kind=evidence`:null,posted_by:user.userId});
+  const {error}=await database.from('listings').insert({id,visibility_radius:visibilityRadius,photo:`/api/photos/${id}`,category:x.category,material:x.material,condition:x.condition,title:x.title,description:x.description,address:x.address,...coords,price,functionality:x.functionality||'Untested',evidence_note:x.evidence_note||'',evidence_photo:x.evidencePhoto?`/api/photos/${id}?kind=evidence`:null,posted_by:user.userId});
   if(error){
     console.error('Database insert listing error:', error);
     await database.storage.from('listing-photos').remove([key,`${id}-evidence.jpg`]);

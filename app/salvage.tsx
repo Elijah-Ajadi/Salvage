@@ -13,15 +13,15 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
-import { demoItems, categories, distance, type Item } from '@/lib/materials';
+import { categories, distance, type Item } from '@/lib/materials';
 import { openReceiptWindow, type ReceiptData } from '@/lib/receipt';
 
 const icons=[LayoutGrid,PanelsTopLeft,Lamp,DoorOpen,Refrigerator,Grid2X2,Shapes];
-const initialProfile={name:'',email:'',phone:'',role:'buyer',locatedAddress:'',address:'Austin, TX',lat:30.2672,lng:-97.7431,radius:20,preferences:categories.slice(1),emailVerified:undefined as boolean|undefined};
-const blank={functionality:'Untested',evidence_note:'',evidencePhoto:'',locatedAddress:'',title:'',description:'',category:'Other',material:'',condition:'Good',address:'',lat:30.2672,lng:-97.7431,photo:'',price:'' as string|number,suggestedPrice:null as number|null};
+const initialProfile={name:'',email:'',phone:'',role:'buyer',locatedAddress:'',address:'',lat:NaN,lng:NaN,radius:20,preferences:categories.slice(1),emailVerified:undefined as boolean|undefined};
+const blank={visibility_radius:20,functionality:'Untested',evidence_note:'',evidencePhoto:'',locatedAddress:'',title:'',description:'',category:'Other',material:'',condition:'Good',address:'',lat:30.2672,lng:-97.7431,photo:'',price:'' as string|number,suggestedPrice:null as number|null};
 
 export default function Salvage({mode,initialAccount}:{mode:string;initialAccount:any}){
- const [items,setItems]=useState<Item[]>(demoItems);
+ const [items,setItems]=useState<Item[]>([]);
  const [live,setLive]=useState(false);
  const [profile,setProfile]=useState<typeof initialProfile>({...initialProfile,...initialAccount});
  const [registered,setRegistered]=useState(true);
@@ -65,6 +65,8 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
  const withdrawalKey=useRef<string|null>(null);
  const cameraInput=useRef<HTMLInputElement>(null);
  const galleryInput=useRef<HTMLInputElement>(null);
+ const signingOut=useRef(false);
+ const profileRef=useRef(profile);profileRef.current=profile;
  const editing=useRef(false);
  editing.current=!!modal;
  const notify=(s:string)=>setMessage(s);
@@ -99,11 +101,16 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
 
  async function refresh(){
    try{
-     const r=await fetch('/api/salvage');
+     if(signingOut.current)return;
+     const current=profileRef.current;
+     const query=hasCoordinates(current)?`?lat=${current.lat}&lng=${current.lng}`:'';
+     const r=await fetch('/api/salvage'+query);
      if(!r.ok)return;
      const d:any=await r.json();
      setLive(true);
-     setItems(d.items.length?d.items:demoItems);
+     setItems(d.items);
+     const requested=new URLSearchParams(window.location.search).get('item');
+     if(requested){const item=d.items.find((i:Item)=>i.id===requested);if(item)setSelected(item);window.history.replaceState({},'',window.location.pathname);}
      if(d.profile){
        if(!editing.current)setProfile(d.profile);
        setRegistered(true);
@@ -171,12 +178,15 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
        const res=await fetch('/api/location?q='+encodeURIComponent(profile.address));
        const found:any=await res.json();
        if(!res.ok)throw Error(found.error);
-       setProfile(v=>({...v,...found}));
+       profileRef.current={...profile,...found};
+       setProfile(profileRef.current);
+       await refresh();
        setModal('');
        return;
      }
      const d=await api('profile',{profile});
-     if(!editing.current)setProfile(d.profile);
+     setProfile(d.profile);
+     profileRef.current=d.profile;
      setRegistered(true);
      setModal('');
      notify('Your pickup preferences are saved.');
@@ -261,8 +271,8 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
 
  async function showBuyerReceipt(item:any){try{const r=await fetch('/api/payments?type=receipt&listingId='+encodeURIComponent(item.id));const d=await r.json();if(!r.ok)throw Error(d.error);if(d.receiptUrl){window.location.href=d.receiptUrl;return;}openReceiptWindow(d.receipt);}catch(e:any){notify(e.message);}}
 
- const filtered=items.filter(i=>(view==='My listings'?i.mine:view==='My pickups'?i.claimedMine:(i.status==='available'||i.status==='reserved'))&&(category==='All materials'||i.category===category)&&`${i.title} ${i.material} ${i.description}`.toLowerCase().includes(search.toLowerCase())&&(view!=='Explore'||distance(profile,i)<=profile.radius)).sort((a,b)=>sort==='newest'?b.created_at-a.created_at:distance(profile,a)-distance(profile,b));
- const openAdd=()=>{if(!registered||profile.role!=='contractor'){setModal('profile');setProfile(v=>({...v,role:'contractor'}));notify('Save your contractor profile once, then start listing.');}else{setDraft({...blank,address:profile.address,lat:profile.lat,lng:profile.lng});setAiNote('');setAiProgress(0);setModal('add');location('draft');}};
+ const filtered=items.filter(i=>(view==='My listings'?i.mine:view==='My pickups'?i.claimedMine:(i.status==='available'||i.status==='reserved'))&&(category==='All materials'||i.category===category)&&`${i.title} ${i.material} ${i.description}`.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>sort==='newest'?b.created_at-a.created_at:distance(profile,a)-distance(profile,b));
+ const openAdd=()=>{if(!registered||profile.role!=='contractor'){setModal('profile');setProfile(v=>({...v,role:'contractor'}));notify('Save your contractor profile once, then start listing.');}else{setDraft({...blank,visibility_radius:profile.radius,address:profile.address,lat:profile.lat,lng:profile.lng});setAiNote('');setAiProgress(0);setModal('add');location('draft');}};
 
  const navItems=mode==='contractor'
    ?['My listings','Earnings & Payouts']
@@ -277,7 +287,7 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
     <div className="header-actions">
       <button className="icon-button notification" aria-label="Notifications" onClick={()=>setModal('notifications')}><Bell size={21}/>{notes.some(n=>!n.read_at)&&<i/>}</button>
       <button className="avatar" onClick={()=>setModal('profile')} aria-label="Your profile">{profile.name?profile.name.split(' ').map(s=>s[0]).slice(0,2).join(''):'JD'}</button>
-      <button className="signout-link" onClick={async()=>{await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'logout'})});window.location.href='/login';}}>Log out</button>
+      <button className="signout-link" disabled={busy} onClick={async()=>{signingOut.current=true;setBusy(true);try{const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'logout'})});if(!r.ok)throw Error('Could not log out. Please try again.');window.location.replace('/login');}catch(e:any){signingOut.current=false;setBusy(false);notify(e.message);}}}>Log out</button>
       {mode==='contractor'&&<button className="primary add-top" onClick={openAdd}><Plus size={19}/> Add item</button>}
     </div>
   </header>
@@ -302,7 +312,7 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
            :'Arrange a pickup and give these materials a new home.'}
        </p>
      </div>
-     <button className="location-button" onClick={()=>setModal('location')}><MapPin size={18}/><span>{profile.address}<small>Within {profile.radius} miles</small></span><ChevronDown size={16}/></button>
+     <button className="location-button" onClick={()=>setModal('location')}><MapPin size={18}/><span>{profile.address||'Set your location'}<small>Nearby listings</small></span><ChevronDown size={16}/></button>
    </div>
 
    {/* Email verification alert */}
@@ -526,7 +536,7 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
          </button>)}
        </div>
 
-       {!filtered.length&&<div className="empty-state"><Package size={36}/><h3>{view==='Explore'?'No materials in this search yet.':'Nothing here just yet.'}</h3><p>{view==='Explore'?'Try another category or expand your pickup radius.':'Explore nearby materials or list something worth saving.'}</p><button className="primary" onClick={()=>{setCategory('All materials');setSearch('');if(view==='Explore')setModal('location');else if(mode==='contractor')openAdd();else setView('Explore');}}> {view==='Explore'?'Adjust search area':mode==='contractor'?'List your first item':'Explore materials'} <ArrowRight size={17}/></button></div>}
+       {!filtered.length&&<div className="empty-state"><Package size={36}/><h3>{view==='Explore'?'No materials in this search yet.':'Nothing here just yet.'}</h3><p>{view==='Explore'?'Check your location or try another category. Listings use the contractor’s selected radius.':'Explore nearby materials or list something worth saving.'}</p><button className="primary" onClick={()=>{setCategory('All materials');setSearch('');if(view==='Explore')setModal('location');else if(mode==='contractor')openAdd();else setView('Explore');}}> {view==='Explore'?'Adjust search area':mode==='contractor'?'List your first item':'Explore materials'} <ArrowRight size={17}/></button></div>}
      </>
    )}
 
@@ -637,11 +647,12 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
      <label style={{gap:'6px'}}>Price (USD)<small style={{color:'#7a8a6a',fontSize:'12px'}}>Leave blank or 0 to list for free. AI suggestion shown above.</small><div style={{position:'relative',display:'flex',alignItems:'center'}}><span style={{position:'absolute',left:'12px',color:'#718262',fontSize:'15px',pointerEvents:'none'}}>$</span><input type="number" min="0" step="0.01" placeholder="0.00 — free" value={draft.price===''?'':draft.price} onChange={e=>setDraft({...draft,price:e.target.value===''?'':parseFloat(e.target.value)||0})} style={{paddingLeft:'26px'}}/></div></label>
      <label>Pickup address<div className="input-action"><input required value={draft.address} onChange={e=>setDraft({...draft,address:e.target.value})}/><button type="button" aria-label="Use current location" onClick={()=>location('draft')}><LocateFixed size={20}/></button></div></label>
      <small>Exact address and your contact details are shared only with the buyer who claims it.</small>
+     <label>Listing visibility <strong>{draft.visibility_radius} miles</strong><Slider value={[draft.visibility_radius]} onValueChange={v=>setDraft({...draft,visibility_radius:Array.isArray(v)?v[0]:v})} min={1} max={100} step={1}/><small>People within this distance of the pickup location can find this item.</small></label>
      <button className="primary full" disabled={busy||!draft.photo}>{busy?'Working…':profile.emailVerified===false?'Verify email to publish':Number(draft.price)>0?`Publish for $${Number(draft.price).toFixed(2)}`:'Publish free listing'} <ArrowRight size={18}/></button>
     </form>}
 
     {/* Profile & Location Modal */}
-    {(modal==='profile'||modal==='location')&&<form onSubmit={saveProfile} className="form-stack">{modal==='profile'&&<><div className="account-role"><Check size={17}/> {mode==='contractor'?'Contractor':'Buyer'} account</div><label>Name or organization<input required value={profile.name} onChange={e=>setProfile({...profile,name:e.target.value})}/></label><div className="form-two"><label>Email<input type="email" required value={profile.email} onChange={e=>setProfile({...profile,email:e.target.value})}/></label><label>Phone<input type="tel" value={profile.phone} onChange={e=>setProfile({...profile,phone:e.target.value})}/></label></div></>}<label>Location or ZIP code<div className="input-action"><input required value={profile.address} onChange={e=>setProfile({...profile,address:e.target.value})}/><button type="button" aria-label="Use current location" onClick={()=>location('profile')}><LocateFixed size={20}/></button></div></label><label>Pickup radius <strong>{profile.radius} miles</strong><Slider value={[profile.radius]} onValueChange={v=>setProfile({...profile,radius:Array.isArray(v)?v[0]:v})} min={1} max={100} step={1}/></label><label>Notify me about</label><div className="preference-grid">{categories.slice(1).map(c=><label key={c}><Checkbox checked={profile.preferences.includes(c)} onCheckedChange={v=>setProfile({...profile,preferences:v?[...profile.preferences,c]:profile.preferences.filter(x=>x!==c)})}/>{c}</label>)}</div><button disabled={busy} className="primary full">{busy?'Saving…':'Save preferences'}<Check size={18}/></button>{!registered&&<a className="signin-link" href="/login">Log in to save your profile</a>}</form>}
+    {(modal==='profile'||modal==='location')&&<form onSubmit={saveProfile} className="form-stack">{modal==='profile'&&<><div className="account-role"><Check size={17}/> {mode==='contractor'?'Contractor':'Buyer'} account</div><label>Name or organization<input required value={profile.name} onChange={e=>setProfile({...profile,name:e.target.value})}/></label><div className="form-two"><label>Email<input type="email" required value={profile.email} onChange={e=>setProfile({...profile,email:e.target.value})}/></label><label>Phone<input type="tel" value={profile.phone} onChange={e=>setProfile({...profile,phone:e.target.value})}/></label></div></>}<label>Location or ZIP code<div className="input-action"><input required value={profile.address} onChange={e=>setProfile({...profile,address:e.target.value})}/><button type="button" aria-label="Use current location" onClick={()=>location('profile')}><LocateFixed size={20}/></button></div></label><label>Notification radius <strong>{profile.radius} miles</strong><Slider value={[profile.radius]} onValueChange={v=>setProfile({...profile,radius:Array.isArray(v)?v[0]:v})} min={1} max={100} step={1}/></label><label>Notify me about</label><div className="preference-grid">{categories.slice(1).map(c=><label key={c}><Checkbox checked={profile.preferences.includes(c)} onCheckedChange={v=>setProfile({...profile,preferences:v?[...profile.preferences,c]:profile.preferences.filter(x=>x!==c)})}/>{c}</label>)}</div><button disabled={busy} className="primary full">{busy?'Saving…':'Save preferences'}<Check size={18}/></button>{!registered&&<a className="signin-link" href="/login">Log in to save your profile</a>}</form>}
 
     {/* Notifications Modal */}
     {modal==='notifications'&&<div className="notification-list">{notes.length?notes.map(n=><button key={n.id} onClick={async()=>{await api('read',{id:n.id});setModal('');const i=items.find(i=>i.id===n.listing_id);if(i)setSelected(i);refresh();}}><Bell size={20}/><span>{n.message}<small>{timeAgo(n.created_at)}</small></span></button>):<div className="empty-state"><Bell size={30}/><h3>You're all caught up.</h3><p>Save your categories and radius to receive matching listings here.</p><button className="primary" onClick={()=>setModal('profile')}>Set preferences</button></div>}</div>}

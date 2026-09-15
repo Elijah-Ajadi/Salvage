@@ -4,6 +4,16 @@ import ts from 'typescript';
 import Stripe from 'stripe';
 async function load(path){const code=ts.transpileModule(await readFile(path,'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;return import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));}
 const {handleAuth}=await load('lib/auth-actions.ts');
+// A stale upstream session must not leave this browser logged in.
+const logoutSource=ts.transpileModule(await readFile('app/api/auth/route.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+const logoutExports={},cleared=[];
+const oldUrl=process.env.NEXT_PUBLIC_SUPABASE_URL;
+process.env.NEXT_PUBLIC_SUPABASE_URL='https://fixture.supabase.co';
+new Function('require','exports',logoutSource)(name=>name==='next/headers'?{cookies:async()=>({getAll:()=>[{name:'sb-fixture-auth-token.0'},{name:'sb-fixture-auth-token.1'},{name:'other-cookie'}],set:(name,value,options)=>cleared.push({name,value,options})})}:name==='@/lib/auth-actions'?{handleAuth:async()=>{throw Error('Stale session');}}:{sessionClient:async()=>({})},logoutExports);
+const logout=await logoutExports.POST(new Request('https://example.test/api/auth',{method:'POST',headers:{origin:'https://example.test','Content-Type':'application/json'},body:JSON.stringify({action:'logout'})}));
+assert.equal(logout.status,200);assert.deepEqual(cleared.map(c=>c.name),['sb-fixture-auth-token.0','sb-fixture-auth-token.1']);assert.ok(cleared.every(c=>c.options.maxAge===0));
+assert.equal((await logoutExports.POST(new Request('https://example.test/api/auth',{method:'POST',headers:{origin:'https://evil.test','Content-Type':'application/json'},body:JSON.stringify({action:'logout'})}))).status,403);
+if(oldUrl===undefined)delete process.env.NEXT_PUBLIC_SUPABASE_URL;else process.env.NEXT_PUBLIC_SUPABASE_URL=oldUrl;
 let resent=0;
 const client={auth:{getUser:async()=>({data:{user:null}}),resend:async()=>{resent++;return {error:null};},signUp:async()=>({data:{session:null},error:null}),signInWithPassword:async()=>({error:{code:'email_not_confirmed'}})}};
 const signup=await handleAuth({action:'signup',email:'test@example.test',password:'test-password',role:'buyer'},client,'https://example.test');
