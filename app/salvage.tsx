@@ -319,7 +319,7 @@ export default function Salvage({mode,initialAccount,initialView,receiptId}:{mod
 
    {/* Email verification alert */}
    {profile.emailVerified===false&&<div className="ai-note" style={{background:'#fff3cd',color:'#856404',borderColor:'#ffeeba',marginBottom:'20px',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:'10px'}}>
-     <span><strong>Email verification required:</strong> Please verify your email address to {mode==='contractor'?'list materials':'claim materials'}.</span>
+     <span><strong>Email verification required:</strong> Please verify your email address to {mode==='contractor'?'list materials':'reserve a pickup window'}.</span>
      <button className="primary" style={{fontSize:'12px',padding:'6px 14px',minHeight:'34px'}} disabled={busy} onClick={async()=>{setBusy(true);try{const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'resend-verification',email:profile.email})});const d:any=await r.json();if(!r.ok)throw Error(d.error);notify(d.message);}catch(e:any){notify(e.message);}finally{setBusy(false);}}}>Resend verification link</button>
    </div>}
 

@@ -86,7 +86,7 @@ export default function ListingsPage() {
     setFiltersApplied(count);
   }, [category, priceFilter]);
 
-  async function handleClaim(item: Item) {
+  async function handleReserve(item: Item) {
     if (!isLoggedIn) {
       window.location.href = `/login?next=/listings`;
       return;
@@ -284,7 +284,7 @@ export default function ListingsPage() {
           </div>
           {isLoggedIn === false && !loading && (
             <a href="/login?next=/listings" style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', background: '#edf3e6', color: '#466a32', border: '1px solid #c4d9b5', borderRadius: '8px', padding: '8px 16px', fontSize: '13px', fontWeight: 700 }}>
-              <LogIn size={16} /> Log in to claim
+              <LogIn size={16} /> Log in to reserve
             </a>
           )}
         </div>
@@ -357,10 +357,10 @@ export default function ListingsPage() {
                       className="primary"
                       style={{ padding: '8px 14px', fontSize: '12px', minHeight: '36px', borderRadius: '7px' }}
                       disabled={busy}
-                      onClick={() => handleClaim(item)}
+                      onClick={() => handleReserve(item)}
                     >
                       {isLoggedIn === false
-                        ? <><LogIn size={13} /> Log in to {price > 0 ? 'buy' : 'claim'}</>
+                        ? <><LogIn size={13} /> Log in to reserve</>
                         : <>{item.status==='reserved'?'View reservation':price > 0 ? `Reserve $${price.toFixed(2)}` : 'Reserve free'} <ArrowUpRight size={13} /></>
                       }
                     </button>
@@ -380,12 +380,12 @@ export default function ListingsPage() {
             textAlign: 'center', color: '#fff',
             boxShadow: '0 12px 36px rgba(35,55,22,0.16)'
           }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '1.2px', color: '#a8c98e', marginBottom: '12px' }}>READY TO CLAIM?</div>
+            <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '1.2px', color: '#a8c98e', marginBottom: '12px' }}>READY TO RESERVE?</div>
             <h2 style={{ fontSize: 'clamp(20px, 3vw, 28px)', fontWeight: 800, letterSpacing: '-0.8px', margin: '0 0 12px' }}>
-              Sign up to claim or purchase materials
+              Sign up to reserve a pickup window
             </h2>
             <p style={{ fontSize: '15px', color: '#c0d4af', margin: '0 0 24px', lineHeight: 1.6 }}>
-              Create a free buyer account to claim items, manage pickup receipts, and track your pickups.
+              Create a free buyer account to reserve a pickup window of up to 4 hours within the next 72 hours, manage receipts, and track your pickups.
             </p>
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
               <a href="/signup?role=buyer" className="primary" style={{ background: '#fff', color: '#2d4122', border: 'none', fontWeight: 700, fontSize: '15px', padding: '13px 24px' }}>

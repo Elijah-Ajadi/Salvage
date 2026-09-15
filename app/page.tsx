@@ -69,13 +69,13 @@ export default async function Home() {
           </div>
           <div style={{display:'flex',gap:'22px',flexWrap:'wrap',alignItems:'center',fontSize:'13px',color:'#6b7762'}}>
             <span style={{display:'inline-flex',alignItems:'center',gap:'6px'}}>
-              <Leaf size={16} style={{color:'#4d7334'}}/> 100% Diversion from Landfills
+              <Leaf size={16} style={{color:'#4d7334'}}/> Built to divert materials from landfills
             </span>
             <span style={{display:'inline-flex',alignItems:'center',gap:'6px'}}>
               <Sparkles size={16} style={{color:'#4d7334'}}/> AI Vision Auto-Cataloging
             </span>
             <span style={{display:'inline-flex',alignItems:'center',gap:'6px'}}>
-              <ShieldCheck size={16} style={{color:'#4d7334'}}/> Verified Claim Receipts
+              <ShieldCheck size={16} style={{color:'#4d7334'}}/> Verified Pickup Passes
             </span>
           </div>
         </div>
@@ -99,24 +99,24 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* Impact Stats Banner */}
+      {/* Marketplace features */}
       <section style={{maxWidth:'1260px',margin:'0 auto 70px',padding:'0 5%'}}>
         <div className="landing-stats" style={{background:'#2d4122',borderRadius:'16px',color:'#fff',boxShadow:'0 10px 30px rgba(45,65,34,0.15)'}}>
           <div>
-            <div style={{fontSize:'36px',fontWeight:800,letterSpacing:'-1px',color:'#d6e8c7'}}>12,400+</div>
-            <div style={{fontSize:'14px',color:'#a9bc9a',marginTop:'4px'}}>Tons of building materials diverted</div>
+            <div style={{fontSize:'36px',fontWeight:800,letterSpacing:'-1px',color:'#d6e8c7'}}>Free or paid</div>
+            <div style={{fontSize:'14px',color:'#a9bc9a',marginTop:'4px'}}>List reusable building materials</div>
           </div>
           <div>
-            <div style={{fontSize:'36px',fontWeight:800,letterSpacing:'-1px',color:'#d6e8c7'}}>$340,000+</div>
-            <div style={{fontSize:'14px',color:'#a9bc9a',marginTop:'4px'}}>Saved by DIYers &amp; local restorers</div>
+            <div style={{fontSize:'36px',fontWeight:800,letterSpacing:'-1px',color:'#d6e8c7'}}>Local pickup</div>
+            <div style={{fontSize:'14px',color:'#a9bc9a',marginTop:'4px'}}>Reserve a window within 72 hours</div>
           </div>
           <div>
-            <div style={{fontSize:'36px',fontWeight:800,letterSpacing:'-1px',color:'#d6e8c7'}}>30 Seconds</div>
-            <div style={{fontSize:'14px',color:'#a9bc9a',marginTop:'4px'}}>Average time to catalog and list</div>
+            <div style={{fontSize:'36px',fontWeight:800,letterSpacing:'-1px',color:'#d6e8c7'}}>Photo-assisted</div>
+            <div style={{fontSize:'14px',color:'#a9bc9a',marginTop:'4px'}}>Review AI suggestions before publishing</div>
           </div>
           <div>
-            <div style={{fontSize:'36px',fontWeight:800,letterSpacing:'-1px',color:'#d6e8c7'}}>100% Safe</div>
-            <div style={{fontSize:'14px',color:'#a9bc9a',marginTop:'4px'}}>Verified pickup passes &amp; Stripe protection</div>
+            <div style={{fontSize:'36px',fontWeight:800,letterSpacing:'-1px',color:'#d6e8c7'}}>Inspect first</div>
+            <div style={{fontSize:'14px',color:'#a9bc9a',marginTop:'4px'}}>Accept the item before card payment is collected</div>
           </div>
         </div>
       </section>
@@ -136,7 +136,7 @@ export default async function Home() {
             </div>
             <h3 style={{fontSize:'21px',fontWeight:700,color:'#23301a',margin:'0 0 12px'}}>1. Snap &amp; Auto-Catalog</h3>
             <p style={{fontSize:'15px',color:'#6e7966',lineHeight:1.6,margin:0}}>
-              Contractors snap an on-site photo. Gemini vision analyzes materials, grades condition, titles the item, and suggests fair salvage pricing instantly.
+              Contractors upload an on-site photo. AI suggests the material, visible condition, title, and resale price. Review the details and add any test notes before publishing.
             </p>
           </article>
 
@@ -146,7 +146,7 @@ export default async function Home() {
             </div>
             <h3 style={{fontSize:'21px',fontWeight:700,color:'#23301a',margin:'0 0 12px'}}>2. Match Nearby Pickups</h3>
             <p style={{fontSize:'15px',color:'#6e7966',lineHeight:1.6,margin:0}}>
-              Buyers set a radius and category alerts. Free materials can be claimed in one click, or priced materials purchased with Stripe card checkout.
+              Buyers set a location and category alerts, then reserve a pickup window of up to 4 hours within the next 72 hours. For priced materials, Stripe holds funds until the buyer inspects and accepts the item.
             </p>
           </article>
 
@@ -156,7 +156,7 @@ export default async function Home() {
             </div>
             <h3 style={{fontSize:'21px',fontWeight:700,color:'#23301a',margin:'0 0 12px'}}>3. Pickup Pass &amp; Payout</h3>
             <p style={{fontSize:'15px',color:'#6e7966',lineHeight:1.6,margin:0}}>
-              Buyers receive an instant verified pickup pass with contractor contact &amp; address. Contractors withdraw their earnings directly to their bank.
+              Buyers receive a verified pickup pass and confirm acceptance after inspection. Contractors confirm handover, then can request payouts via ACH, Stripe, PayPal, or Zelle for manual processing off-platform.
             </p>
           </article>
         </div>
@@ -226,20 +226,20 @@ export default async function Home() {
               Save on dumpster fees.<br/>Earn cash or record donations.
             </h3>
             <p style={{fontSize:'15px',color:'#647259',lineHeight:1.7,margin:'0 0 24px'}}>
-              Skip landfill tipping fees. Turn salvage materials from your remodel jobs into an ongoing revenue stream or verified nonprofit tax records.
+              Sell reusable materials from your remodel jobs or record a donation. Donation records include the nonprofit name and your own estimated value; they are not verified nonprofit acknowledgments or certified valuations.
             </p>
             <ul style={{listStyle:'none',padding:0,margin:'0 0 32px',display:'flex',flexDirection:'column',gap:'12px'}}>
               <li style={{display:'flex',alignItems:'center',gap:'10px',fontSize:'14px',color:'#2d3924'}}>
                 <CheckCircle2 size={18} style={{color:'#4d7532'}}/> AI photos automatically generate specs &amp; pricing
               </li>
               <li style={{display:'flex',alignItems:'center',gap:'10px',fontSize:'14px',color:'#2d3924'}}>
-                <CheckCircle2 size={18} style={{color:'#4d7532'}}/> Safe payment via Stripe sandbox &amp; bank payouts
+                <CheckCircle2 size={18} style={{color:'#4d7532'}}/> Stripe card payments &amp; manually processed payout requests
               </li>
               <li style={{display:'flex',alignItems:'center',gap:'10px',fontSize:'14px',color:'#2d3924'}}>
-                <CheckCircle2 size={18} style={{color:'#4d7532'}}/> Exact address shared only after confirmed pickup
+                <CheckCircle2 size={18} style={{color:'#4d7532'}}/> Pickup details available to reservation participants
               </li>
               <li style={{display:'flex',alignItems:'center',gap:'10px',fontSize:'14px',color:'#2d3924'}}>
-                <CheckCircle2 size={18} style={{color:'#4d7532'}}/> 1-click nonprofit tax donation receipt generator
+                <CheckCircle2 size={18} style={{color:'#4d7532'}}/> Donation record generator with donor-entered details
               </li>
             </ul>
             <a className="primary" href="/signup?role=contractor" style={{padding:'13px 24px'}}>
@@ -263,13 +263,13 @@ export default async function Home() {
                 <CheckCircle2 size={18} style={{color:'#3b5c89'}}/> Custom notification radius tailored to your zip code
               </li>
               <li style={{display:'flex',alignItems:'center',gap:'10px',fontSize:'14px',color:'#2d3924'}}>
-                <CheckCircle2 size={18} style={{color:'#3b5c89'}}/> Free materials available daily with instant claim pass
+                <CheckCircle2 size={18} style={{color:'#3b5c89'}}/> Reserve a pickup window for free or priced materials
               </li>
               <li style={{display:'flex',alignItems:'center',gap:'10px',fontSize:'14px',color:'#2d3924'}}>
-                <CheckCircle2 size={18} style={{color:'#3b5c89'}}/> Automated official PDF receipts for every purchase
+                <CheckCircle2 size={18} style={{color:'#3b5c89'}}/> Live pickup receipts with Print / Save as PDF
               </li>
               <li style={{display:'flex',alignItems:'center',gap:'10px',fontSize:'14px',color:'#2d3924'}}>
-                <CheckCircle2 size={18} style={{color:'#3b5c89'}}/> Direct coordination with vetted licensed contractors
+                <CheckCircle2 size={18} style={{color:'#3b5c89'}}/> Direct pickup coordination with contractors
               </li>
             </ul>
             <a className="primary" href="/signup?role=buyer" style={{padding:'13px 24px',background:'#314b22'}}>
