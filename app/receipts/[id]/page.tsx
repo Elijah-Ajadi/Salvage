@@ -1,4 +1,3 @@
-import {getUser} from '@/lib/auth';
-import {redirect} from 'next/navigation';
-import PickupUI from '@/app/pickup-ui';
-export default async function Page({params}:{params:Promise<{id:string}>}){if(!await getUser())redirect('/login');const {id}=await params;return <PickupUI id={id}/>;}
+import RecordsWorkspace from '@/app/records-workspace';
+export const dynamic='force-dynamic';
+export default async function Page({params}:{params:Promise<{id:string}>}){const {id}=await params;return <RecordsWorkspace id={id}/>;}

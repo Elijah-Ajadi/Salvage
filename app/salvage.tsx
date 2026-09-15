@@ -1,5 +1,5 @@
 'use client';
-import {ReserveForm,ReportForm} from '@/app/pickup-ui';
+import PickupUI,{ReserveForm,ReportForm} from '@/app/pickup-ui';
 import {hasCoordinates} from '@/lib/location';
 import { useEffect, useState, useRef } from 'react';
 import { 
@@ -20,12 +20,12 @@ const icons=[LayoutGrid,PanelsTopLeft,Lamp,DoorOpen,Refrigerator,Grid2X2,Shapes]
 const initialProfile={name:'',email:'',phone:'',role:'buyer',locatedAddress:'',address:'',lat:NaN,lng:NaN,radius:20,preferences:categories.slice(1),emailVerified:undefined as boolean|undefined};
 const blank={visibility_radius:20,functionality:'Untested',evidence_note:'',evidencePhoto:'',locatedAddress:'',title:'',description:'',category:'Other',material:'',condition:'Good',address:'',lat:30.2672,lng:-97.7431,photo:'',price:'' as string|number,suggestedPrice:null as number|null};
 
-export default function Salvage({mode,initialAccount}:{mode:string;initialAccount:any}){
+export default function Salvage({mode,initialAccount,initialView,receiptId}:{mode:string;initialAccount:any;initialView?:string;receiptId?:string}){
  const [items,setItems]=useState<Item[]>([]);
  const [live,setLive]=useState(false);
  const [profile,setProfile]=useState<typeof initialProfile>({...initialProfile,...initialAccount});
  const [registered,setRegistered]=useState(true);
- const [view,setView]=useState(mode==='contractor'?'My listings':'Explore');
+ const [view,setView]=useState(initialView||(mode==='contractor'?'My listings':'Explore'));
  const [category,setCategory]=useState('All materials');
  const [search,setSearch]=useState('');
  const [sort,setSort]=useState('nearest');
@@ -274,15 +274,17 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
  const filtered=items.filter(i=>(view==='My listings'?i.mine:view==='My pickups'?i.claimedMine:(i.status==='available'||i.status==='reserved'))&&(category==='All materials'||i.category===category)&&`${i.title} ${i.material} ${i.description}`.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>sort==='newest'?b.created_at-a.created_at:distance(profile,a)-distance(profile,b));
  const openAdd=()=>{if(!registered||profile.role!=='contractor'){setModal('profile');setProfile(v=>({...v,role:'contractor'}));notify('Save your contractor profile once, then start listing.');}else{setDraft({...blank,visibility_radius:profile.radius,address:profile.address,lat:profile.lat,lng:profile.lng});setAiNote('');setAiProgress(0);setModal('add');location('draft');}};
 
+ const recordsView=view==='My pickups'||view==='Reports & appeals';
+ useEffect(()=>{if(!initialView){const requested=new URLSearchParams(window.location.search).get('view');if(requested&&['Explore','My listings','Payment History','Earnings & Payouts'].includes(requested))setView(requested);}},[initialView]);
  const navItems=mode==='contractor'
-   ?['My listings','Earnings & Payouts']
-   :['Explore','My pickups','Payment History'];
+   ?['My listings','My pickups','Earnings & Payouts','Reports & appeals']
+   :['Explore','My pickups','Payment History','Reports & appeals'];
 
  return <div className="app-shell">
   <header className="topbar">
     <a className="brand" href="/"><span className="brand-icon"><Recycle size={27}/></span>salvage<span className="brand-dot">.</span></a>
     <nav>
-      {navItems.map(v=><button key={v} className={view===v?'nav-active':''} onClick={()=>{setView(v);setCategory('All materials');}}>{v}</button>)}
+      {navItems.map(v=><button key={v} className={view===v?'nav-active':''} aria-current={view===v?'page':undefined} onClick={()=>{if(v==='My pickups'||v==='Reports & appeals'){window.location.href=v==='My pickups'?'/pickups':'/reports';return;}if(initialView){window.location.href=(mode==='contractor'?'/contractor':'/buyer')+'?view='+encodeURIComponent(v);return;}setView(v);setCategory('All materials');}}>{v==='My pickups'&&mode==='contractor'?'Reservations':v}</button>)}
     </nav>
     <div className="header-actions">
       <button className="icon-button notification" aria-label="Notifications" onClick={()=>setModal('notifications')}><Bell size={21}/>{notes.some(n=>!n.read_at)&&<i/>}</button>
@@ -293,7 +295,7 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
   </header>
 
   <main className="workspace">
-   <div className="pickup-links"><a href="/pickups">Pickup receipts &amp; reservations</a><a href="/reports">Reports &amp; appeals</a></div>
+   {recordsView?<PickupUI id={receiptId} reportsOnly={view==='Reports & appeals'}/>:<>
    <div className="page-heading">
      <div>
        <div className="eyebrow"><span/> {mode==='contractor'?'YOUR CONTRACTOR WORKSPACE':'THE LOCAL MATERIAL EXCHANGE'}</div>
@@ -541,10 +543,11 @@ export default function Salvage({mode,initialAccount}:{mode:string;initialAccoun
    )}
 
    <div className="bottom-note"><Recycle size={17}/><span>A second life for materials. A little less in the landfill.</span></div>
+  </>}
   </main>
 
   <footer><a className="footer-brand" href="/">salvage.</a><span>Built for the next build.</span><span className="footer-right">Good for your project. Better for the planet. <Leaf size={14}/></span></footer>
-  {mode==='contractor'&&<button className="mobile-add primary" onClick={openAdd}><Plus size={22}/> Add item</button>}
+  {mode==='contractor'&&!recordsView&&<button className="mobile-add primary" onClick={openAdd}><Plus size={22}/> Add item</button>}
 
   {/* Modal Dialogs */}
   <Dialog open={!!modal} onOpenChange={o=>{if(!o)setModal('');}}>

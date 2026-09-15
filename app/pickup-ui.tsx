@@ -1,5 +1,6 @@
 'use client';
 import {useEffect,useState} from 'react';
+import {ArrowLeft,ArrowUpRight,CalendarDays,ReceiptText,ShieldCheck,PackageCheck} from 'lucide-react';
 import {openReceiptWindow,type ReceiptData} from '@/lib/receipt';
 import type {Item} from '@/lib/materials';
 import './pickups.css';
@@ -32,7 +33,7 @@ export function ReportForm({listingId,reservationId,noShow=false}:{listingId:str
 
 export default function PickupUI({id,reportsOnly=false}:{id?:string;reportsOnly?:boolean}){
  const [data,setData]=useState<any>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[inspected,setInspected]=useState(false),[extension,setExtension]=useState(''),[rating,setRating]=useState(5),[comment,setComment]=useState('');
- async function refresh(){try{const r=await fetch('/api/pickups'+(reportsOnly?'?reports=1':id?'?id='+id:''));const d=await r.json();if(!r.ok)throw Error(d.error);setData(d);}catch(e){setError((e as Error).message);}}
+ async function refresh(){try{const r=await fetch('/api/pickups'+(reportsOnly?'?reports=1':id?'?id='+id:''));const d=await r.json();if(!r.ok)throw Error(d.error);setData(d);setError('');}catch(e){setError((e as Error).message);}}
  useEffect(()=>{refresh();const t=setInterval(refresh,15000);return()=>clearInterval(t);},[id,reportsOnly]);
  async function run(body:object){setBusy(true);setError('');try{await action(body);await refresh();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
  const p=data?.pickups?.[0];
@@ -44,10 +45,13 @@ export default function PickupUI({id,reportsOnly=false}:{id?:string;reportsOnly?
    pickup:{status:labels[p.status],window:date(p.pickup_start)+' – '+date(p.pickup_end),deadline:date(p.deadline),liveUrl:window.location.origin+'/receipts/'+p.id}};
   openReceiptWindow(receipt);
  }
- return <main className="pickup-page"><header className="pickup-nav"><a className="brand" href="/">salvage.</a><a href="/dashboard">Dashboard</a><a href="/pickups">Pickup receipts</a><a href="/reports">Reports &amp; appeals</a></header>
+ return <section className="pickup-page" aria-label={reportsOnly?'Reports and appeals':'Pickup reservations'}>
+ <div className="page-heading records-heading"><div><div className="eyebrow"><span/> {reportsOnly?'SUPPORT & SAFETY':'YOUR PICKUP WORKSPACE'}</div><h1>{reportsOnly?(data?.admin?'Safety review queue':'Reports & appeals'):id?'Your pickup receipt':'Pickups & reservations'}</h1><p>{reportsOnly?'Follow your reports, review decisions, and submit an appeal.':id?'Keep your pickup details, payment, and handover together.':'From reservation to handover. Every pickup, in one place.'}</p></div><span className="records-heading-icon" aria-hidden="true">{reportsOnly?<ShieldCheck size={28}/>:<ReceiptText size={28}/>}</span></div>
+ {id&&<a className="records-back" href="/pickups"><ArrowLeft size={16}/> All pickups & reservations</a>}
+ {!id&&data&&<div className="records-summary"><div><span className="strip-icon">{reportsOnly?<ShieldCheck size={22}/>:<PackageCheck size={22}/>}</span><div><strong>{reportsOnly?data.reports.length+' reports':data.pickups.filter((r:any)=>['checkout','reserved','accepting','accepted'].includes(r.status)).length+' active pickups'}</strong><p>{reportsOnly?'Reports are reviewed before account restrictions are applied.':'Your existing receipt follows each reservation through collection.'}</p></div></div><span className="records-live"><i className="live-dot"/> Updated live</span></div>}
  {error&&<p className="auth-error" role="alert">{error}</p>}
- {!data?<p>Loading your records…</p>:reportsOnly?<><h1>{data.admin?'Safety review queue':'Reports & appeals'}</h1><p>Reports are reviewed before restrictions are applied. Two confirmed no-shows within 30 days trigger a 48-hour reservation cooldown.</p>{data.reports.length===0?<p>No reports.</p>:data.reports.map((r:any)=><ReportCard key={r.id} report={r} admin={data.admin} userId={data.userId} refresh={refresh}/>)}</>:!id?<><h1>Your pickup receipts</h1><p>Reservations, payment and handover all live on the same receipt.</p>{!data.pickups.length?<p>No pickup reservations yet.</p>:<div className="pickup-grid">{data.pickups.map((r:any)=><a className="pickup-card" key={r.id} href={'/receipts/'+r.id}><span className="pickup-status">{labels[r.status]}</span><h2>{r.item_title}</h2><p>{date(r.pickup_start)} – {date(r.pickup_end)}</p><p>{r.amount_cents?'$'+(r.amount_cents/100).toFixed(2):'Free pickup'} · {data.userId===r.buyer_id?'Buyer':'Contractor'}</p></a>)}</div>}</>:!p?<p>This receipt does not exist or belongs to another account.</p>:<>
- <article className="pickup-card pickup-receipt"><span className="pickup-status">{labels[p.status]}</span><h1>{p.item_title}</h1><p className="muted">Receipt SAL-{p.id}</p>
+ {!data?<div className="records-loading" role="status">Loading your records…</div>:reportsOnly?<>{data.reports.length===0?<div className="empty-state records-empty"><ShieldCheck size={40}/><h3>No reports to follow up on</h3><p>Reports you submit or receive will appear here, along with decisions and appeal options.</p></div>:data.reports.map((r:any)=><ReportCard key={r.id} report={r} admin={data.admin} userId={data.userId} refresh={refresh}/>)}</>:!id?<>{!data.pickups.length?<div className="empty-state records-empty"><ReceiptText size={40}/><h3>Your pickups start here</h3><p>When an item is reserved, its receipt and pickup details will appear here.</p><a className="primary" href="/dashboard">Back to your dashboard <ArrowUpRight size={16}/></a></div>:<div className="pickup-grid">{data.pickups.map((r:any)=><a className="pickup-card pickup-list-card" key={r.id} href={'/receipts/'+r.id}><span className="pickup-status" data-status={r.status}>{labels[r.status]}</span><h2>{r.item_title}</h2><p className="records-date"><CalendarDays size={16}/><span>{date(r.pickup_start)} – {date(r.pickup_end)}</span></p><p>{r.amount_cents?'$'+(r.amount_cents/100).toFixed(2):'Free pickup'} · {data.userId===r.buyer_id?'Buyer':'Contractor'}</p><span className="records-open">View pickup receipt <ArrowUpRight size={16}/></span></a>)}</div>}</>:!p?<p>This receipt does not exist or belongs to another account.</p>:<>
+ <article className="pickup-card pickup-receipt"><span className="pickup-status" data-status={p.status}>{labels[p.status]}</span><h1>{p.item_title}</h1><p className="muted">Receipt SAL-{p.id}</p>
  <p><strong>Functionality:</strong> {p.item_functionality}</p><p>{p.item.description}</p>
  <dl><dt>Pickup window</dt><dd>{date(p.pickup_start)} – {date(p.pickup_end)}</dd><dt>Reservation deadline</dt><dd>{date(p.deadline)}</dd><dt>Amount</dt><dd>{p.amount_cents?'$'+(p.amount_cents/100).toFixed(2):'Free'}</dd><dt>Buyer</dt><dd>{p.buyer.name} · {p.buyer.email}</dd><dt>Contractor</dt><dd>{p.contractor.name} · {p.contractor.email}{p.contractor.phone&&' · '+p.contractor.phone}</dd>{p.item.address&&<><dt>Pickup address</dt><dd>{p.item.address}</dd></>}</dl>
  {['cancelled','expired','declined'].includes(p.status)&&<p className="auth-error">This receipt is no longer valid for pickup. The item may be reserved by someone else. Any uncollected card hold is released; your bank controls when it disappears.</p>}
@@ -69,13 +73,13 @@ export default function PickupUI({id,reportsOnly=false}:{id?:string;reportsOnly?
  {p.review&&<p>Your review: {p.review.rating}/5 — {p.review.comment}</p>}
  <ReportForm listingId={p.listing_id} reservationId={p.id} noShow={p.status==='expired'&&p.end_reason!=='checkout_incomplete'&&data.userId===p.contractor_id}/>
  </section></>}
- </main>;
+ </section>;
 }
 
 function ReportCard({report:r,admin,userId,refresh}:{report:any;admin:boolean;userId:string;refresh:()=>void}){
  const [text,setText]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
  async function submit(body:object){setBusy(true);try{await action(body);refresh();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
- return <article className="pickup-card form-stack"><h2>{r.reason.replaceAll('_',' ')} · {r.status}</h2><p>{r.details}</p><p>{date(r.created_at)}</p>{r.resolution&&<p>Decision: {r.resolution}</p>}{r.appeal&&<p>Appeal: {r.appeal}</p>}{error&&<p role="alert" className="auth-error">{error}</p>}
+ return <article className="pickup-card form-stack"><div className="records-report-heading"><h2>{r.reason.replaceAll('_',' ')}</h2><span className="pickup-status" data-status={r.status}>{r.status}</span></div><p>{r.details}</p><p>{date(r.created_at)}</p>{r.resolution&&<p>Decision: {r.resolution}</p>}{r.appeal&&<p>Appeal: {r.appeal}</p>}{error&&<p role="alert" className="auth-error">{error}</p>}
  {(admin||(r.target_id===userId&&r.status==='upheld'))&&<label>{admin?'Review explanation':'Explain your appeal'}<textarea minLength={10} maxLength={2000} value={text} onChange={e=>setText(e.target.value)}/></label>}
  {admin?<div className="pickup-buttons"><button className="primary" disabled={busy||text.trim().length<10} onClick={()=>submit({action:'review-report',id:r.id,decision:'upheld',resolution:text})}>Uphold report</button><button className="pickup-secondary" disabled={busy||text.trim().length<10} onClick={()=>submit({action:'review-report',id:r.id,decision:'dismissed',resolution:text})}>Dismiss report</button></div>:r.target_id===userId&&r.status==='upheld'&&<button className="primary" disabled={busy||text.trim().length<10} onClick={()=>submit({action:'appeal',id:r.id,details:text})}>Submit appeal</button>}
  </article>;
