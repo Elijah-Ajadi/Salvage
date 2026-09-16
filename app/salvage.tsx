@@ -1,4 +1,5 @@
 'use client';
+import MaterialMap from '@/app/material-map';
 import PickupUI,{ReserveForm,ReportForm} from '@/app/pickup-ui';
 import {hasCoordinates} from '@/lib/location';
 import { useEffect, useState, useRef } from 'react';
@@ -29,6 +30,7 @@ export default function Salvage({mode,initialAccount,initialView,receiptId}:{mod
  const [category,setCategory]=useState('All materials');
  const [search,setSearch]=useState('');
  const [sort,setSort]=useState('nearest');
+ const [distanceLimit,setDistanceLimit]=useState('all');
  const [layout,setLayout]=useState('grid');
  const [modal,setModal]=useState('');
  const [selected,setSelected]=useState<Item|null>(null);
@@ -271,7 +273,7 @@ export default function Salvage({mode,initialAccount,initialView,receiptId}:{mod
 
  async function showBuyerReceipt(item:any){try{const r=await fetch('/api/payments?type=receipt&listingId='+encodeURIComponent(item.id));const d=await r.json();if(!r.ok)throw Error(d.error);if(d.receiptUrl){window.location.href=d.receiptUrl;return;}openReceiptWindow(d.receipt);}catch(e:any){notify(e.message);}}
 
- const filtered=items.filter(i=>(view==='My listings'?i.mine:view==='My pickups'?i.claimedMine:(i.status==='available'||i.status==='reserved'))&&(category==='All materials'||i.category===category)&&`${i.title} ${i.material} ${i.description}`.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>sort==='newest'?b.created_at-a.created_at:distance(profile,a)-distance(profile,b));
+ const filtered=items.filter(i=>(view==='My listings'?i.mine:view==='My pickups'?i.claimedMine:(i.status==='available'||i.status==='reserved'))&&(distanceLimit==='all'||distance(profile,i)<=Number(distanceLimit))&&(category==='All materials'||i.category===category)&&`${i.title} ${i.material} ${i.description}`.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>sort==='newest'?b.created_at-a.created_at:distance(profile,a)-distance(profile,b));
  const openAdd=()=>{if(!registered||profile.role!=='contractor'){setModal('profile');setProfile(v=>({...v,role:'contractor'}));notify('Save your contractor profile once, then start listing.');}else{setDraft({...blank,visibility_radius:profile.radius,address:profile.address,lat:profile.lat,lng:profile.lng});setAiNote('');setAiProgress(0);setModal('add');location('draft');}};
 
  const recordsView=view==='My pickups'||view==='Reports & appeals';
@@ -514,12 +516,13 @@ export default function Salvage({mode,initialAccount,initialView,receiptId}:{mod
        <div className="results-bar">
          <div><h2>{view==='Explore'?'Available nearby':view}</h2><span>{filtered.length} materials <span className="live-dot"/> {items.some(i=>i.demo)?'Sample listings':'Updated live'}</span></div>
          <div className="results-options">
+           <Select value={distanceLimit} onValueChange={v=>setDistanceLimit(v||'all')} disabled={!hasCoordinates(profile)}><SelectTrigger aria-label="Maximum distance" className="sort-select"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All nearby distances</SelectItem>{[5,10,25,50,100].map(n=><SelectItem key={n} value={String(n)}>Within {n} miles</SelectItem>)}</SelectContent></Select>
            <Select value={sort} onValueChange={v=>setSort(v||'nearest')}><SelectTrigger className="sort-select"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="nearest">Nearest first</SelectItem><SelectItem value="newest">Newest first</SelectItem></SelectContent></Select>
            <Tabs value={layout} onValueChange={setLayout}><TabsList className="view-toggle"><TabsTrigger value="grid" aria-label="Grid view"><LayoutGrid size={17}/></TabsTrigger><TabsTrigger value="map" aria-label="Map view"><Map size={17}/></TabsTrigger></TabsList></Tabs>
          </div>
        </div>
 
-       {layout==='map'&&hasCoordinates(profile)&&<div className="map-panel"><iframe title="Map of your pickup area" src={`https://www.openstreetmap.org/export/embed.html?bbox=${profile.lng-.2}%2C${profile.lat-.14}%2C${profile.lng+.2}%2C${profile.lat+.14}&layer=mapnik&marker=${profile.lat}%2C${profile.lng}`}/><div className="map-caption"><MapPin size={17}/> Your search area · Choose an item below for its pickup area.</div></div>}
+       {layout==='map'&&hasCoordinates(profile)&&<MaterialMap items={filtered} center={profile} onSelect={setSelected}/>}
 
        <div className="material-grid">
          {filtered.map(item=><button className="material-card" key={item.id} onClick={()=>setSelected(item)}>

@@ -53,7 +53,7 @@ export async function POST(req:Request){try{
    reservation=p;target=p.buyer_id===user.userId?p.contractor_id:p.buyer_id;
   }
   if(target===user.userId)return fail('You cannot report yourself.');
-  if(b.reason==='no_show'&&(!reservation||reservation.contractor_id!==user.userId||reservation.status!=='expired'||reservation.end_reason==='checkout_incomplete'||Date.parse(reservation.pickup_end)>Date.now()))return fail('No-shows can be reported by the contractor after a reservation expires.');
+  if(b.reason==='no_show'&&(!reservation||!reservation.contractor_confirmed_at||reservation.contractor_id!==user.userId||reservation.status!=='expired'||reservation.end_reason==='checkout_incomplete'||Date.parse(reservation.pickup_end)>Date.now()))return fail('No-shows require a confirmed pickup window and can be reported by the contractor after it expires.');
   const {data:existing}=await db.from('safety_reports').select('id').eq('reporter_id',user.userId).eq('listing_id',b.listingId).eq('reason',b.reason).in('status',['open','upheld']).limit(1);
   if(existing?.length)return fail('You already have an active report for this issue.');
   const {error}=await db.from('safety_reports').insert({reporter_id:user.userId,target_id:target,listing_id:b.listingId,reservation_id:reservation?.id||null,reason:b.reason,details:b.details.trim()});if(error)throw error;
@@ -70,6 +70,7 @@ export async function POST(req:Request){try{
   if(error||!data)return fail('This report cannot be appealed.',409);return Response.json({ok:true});
  }
  if(!validId(b.id))return fail('Invalid receipt.');
+ if(b.action==='confirm-window'){await rpc('confirm_pickup_window',{p_id:b.id,p_contractor:user.userId});return Response.json({ok:true});}
  if(b.action==='accept'){
   if(b.inspected!==true)return fail('Confirm that you inspected and accept the item.');
   const p=await rpc('accept_pickup',{p_id:b.id,p_buyer:user.userId});

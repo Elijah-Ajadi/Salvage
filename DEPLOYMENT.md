@@ -1,5 +1,19 @@
 # Deploy Salvage to Vercel — Step-by-Step Guide
 
+## Contractor confirmation and interactive map
+
+Migration `202609150008_pickup_confirmation.sql` requires contractors to confirm new pickup windows before buyers can accept items. Contractors may also extend the end time while preserving the original arrival time. Both participants receive updates, and unconfirmed windows cannot be used for no-show reports. Existing reservations retain their previously agreed windows.
+
+Apply this migration and deploy the accompanying app together during a maintenance window:
+
+```bash
+node --env-file=.env scripts/upgrade-confirmation.mjs
+```
+
+Do not leave the previous app running against the new migration: it has no confirmation button. This migration has been tested locally; it has not been applied to the hosted database as part of the Devpost writeup changes.
+
+The workspace map now uses Leaflet with OpenStreetMap tiles, selectable material pins, grouped overlapping locations, and category/search/distance filtering. Keep OpenStreetMap attribution visible. Public discovery continues to receive approximate listing coordinates from the existing API.
+
 ## Location visibility update
 
 Migration `202609150007_listing_radius.sql` adds a contractor-selected visibility radius to each listing. Existing listings inherit their contractor's saved radius. It has been applied to the configured Salvage database; other installations can run `node --env-file=.env scripts/upgrade-location.mjs` after the pickup migration. Deploy the accompanying application changes together.

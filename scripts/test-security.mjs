@@ -37,4 +37,23 @@ const request=(signature)=>new Request('https://example.test/api/payments/webhoo
 assert.equal((await exports.POST(request('bad'))).status,400);assert.equal(fulfilled,0);
 const signature=sdk.webhooks.generateTestHeaderString({payload,secret:process.env.STRIPE_WEBHOOK_SECRET});
 assert.equal((await exports.POST(request(signature))).status,200);assert.equal(fulfilled,1);
-console.log('PASS: email confirmation enforced, resend without password, receipt injection escaped, test receipt labelled, forged webhook rejected, signed webhook accepted.');
+// Confirmation must use the authenticated actor, never a contractor ID from the body.
+const pickupSource=ts.transpileModule(await readFile('app/api/pickups/route.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+const pickupExports={},rpcCalls=[];
+const actor=crypto.randomUUID(),reservation=crypto.randomUUID();
+let pickupUser={userId:actor,emailVerified:true};
+new Function('require','exports',pickupSource)(name=>{
+ if(name==='@/lib/auth')return {getUser:async()=>pickupUser};
+ if(name==='@/lib/supabase/server')return {admin:()=>({})};
+ if(name==='@/lib/pickups')return {rpc:async(name,args)=>{rpcCalls.push({name,args});return {};},validId:id=>typeof id==='string'&&/^[0-9a-f-]{36}$/.test(id)};
+ return {};
+},pickupExports);
+const confirmRequest=(origin='https://example.test')=>new Request('https://example.test/api/pickups',{method:'POST',headers:{origin,'Content-Type':'application/json'},body:JSON.stringify({action:'confirm-window',id:reservation,contractorId:crypto.randomUUID()})});
+assert.equal((await pickupExports.POST(confirmRequest())).status,200);
+assert.deepEqual(rpcCalls.at(-1),{name:'confirm_pickup_window',args:{p_id:reservation,p_contractor:actor}});
+rpcCalls.length=0;
+assert.equal((await pickupExports.POST(confirmRequest('https://evil.test'))).status,403);
+pickupUser={userId:actor,emailVerified:false};assert.equal((await pickupExports.POST(confirmRequest())).status,403);
+pickupUser=null;assert.equal((await pickupExports.POST(confirmRequest())).status,401);
+assert.equal(rpcCalls.length,0,'Rejected requests never reach the confirmation database function');
+console.log('PASS: email confirmation enforced, resend without password, receipt injection escaped, test receipt labelled, forged webhook rejected, signed webhook accepted, pickup confirmation uses verified session identity.');

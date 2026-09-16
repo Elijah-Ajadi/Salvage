@@ -48,6 +48,9 @@ try{
  assert.equal((await call(other,'/api/pickups',{action:'waitlist',listingId:free})).status,200);
  assert.equal((await call(seller,'/api/pickups',{action:'collect',id:pickup.id})).status,409);
  assert.equal((await call(other,'/api/pickups',{action:'accept',id:pickup.id,inspected:true})).status,409);
+ assert.equal((await call(buyer,'/api/pickups',{action:'accept',id:pickup.id,inspected:true})).status,409);
+ assert.equal((await call(other,'/api/pickups',{action:'confirm-window',id:pickup.id})).status,409);
+ assert.equal((await call(seller,'/api/pickups',{action:'confirm-window',id:pickup.id})).status,200);
  assert.equal((await call(buyer,'/api/pickups',{action:'accept',id:pickup.id,inspected:true})).status,200);
  assert.equal((await call(seller,'/api/pickups',{action:'collect',id:pickup.id})).status,200);
  const receipt=await call(buyer,'/api/payments?type=receipt&listingId='+free);assert.equal(receipt.status,200);assert.ok(receipt.data.receiptUrl);

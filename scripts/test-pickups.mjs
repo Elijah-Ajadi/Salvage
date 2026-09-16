@@ -16,14 +16,21 @@ try{
  const reserve=(id,b=buyer)=>one('select * from reserve_pickup($1,$2,$3,$4,false)',[id,b,start,end]);
  const endPickup=(id,b=buyer,why='cancelled')=>one('select * from end_pickup($1,$2,$3)',[id,b,why]);
  const accept=(id,b=buyer)=>one('select * from accept_pickup($1,$2)',[id,b]);
+ const confirm=(id,b=seller)=>one('select * from confirm_pickup_window($1,$2)',[id,b]);
  const collect=(id,b=seller)=>one('select * from collect_pickup($1,$2)',[id,b]);
  const firstItem=await item();const p=await reserve(firstItem);
  assert.equal(p.status,'reserved');assert.equal((await reserve(firstItem)).id,p.id);
  await assert.rejects(reserve(firstItem,other),/Another buyer/);
  const second=await reserve(await item());await assert.rejects(reserve(await item()),/two active/);
  await assert.rejects(collect(p.id),/Wait for the buyer/);await assert.rejects(accept(p.id,other),/Not your/);
+ assert.equal(p.contractor_confirmed_at,null);
+ await assert.rejects(accept(p.id),/contractor to confirm/);
+ await assert.rejects(confirm(p.id,buyer),/Only the contractor/);
+ await assert.rejects(confirm(p.id,moderator),/Only the contractor/);
+ assert.ok((await confirm(p.id)).contractor_confirmed_at);
+ await confirm(p.id);
  await accept(p.id);assert.equal((await collect(p.id)).status,'collected');assert.equal((await collect(p.id)).status,'collected');
- assert.equal((await one('select count(*)::int n from notifications where listing_id=$1 and user_id=$2',[firstItem,seller])).n,3,'Reserve, accept and collect each notify once');
+ assert.equal((await one('select count(*)::int n from notifications where listing_id=$1 and user_id=$2',[firstItem,seller])).n,4,'Reserve, confirm, accept and collect each notify once');
  await db.query('insert into pickup_waitlist(listing_id,buyer_id) values($1,$2)',[second.listing_id,other]);
  await db.query("update pickup_reservations set deadline=now()-interval '1 minute' where id=$1",[second.id]);
  await db.query('select expire_pickups()');await db.query('select expire_pickups()');
@@ -36,11 +43,22 @@ try{
  await db.query('select extend_pickup($1,$2,null,true)',[ext.id,seller]);
  assert.equal((await one('select extension_status from pickup_reservations where id=$1',[ext.id])).extension_status,'approved');
  await endPickup(ext.id);
+ const extended=await reserve(await item());
+ await assert.rejects(db.query('select extend_pickup($1,$2,$3,null)',[extended.id,other,new Date(Date.now()+7200000).toISOString()]),/Choose an extension/);
+ const longer=await one('select * from extend_pickup($1,$2,$3,null)',[extended.id,seller,new Date(Date.now()+7200000).toISOString()]);
+ assert.ok(longer.contractor_confirmed_at);
+ assert.equal(longer.pickup_start.toISOString(),new Date(start).toISOString(),'Seller extension preserves original arrival time');
+ await endPickup(extended.id);
+ await assert.rejects(confirm(extended.id),/no longer/);
+ await assert.rejects(db.query("insert into safety_reports(reporter_id,target_id,listing_id,reservation_id,reason,details) values($1,$2,$3,$4,'no_show','Unconfirmed window cannot be a no show')",[seller,buyer,second.listing_id,second.id]),/contractor-confirmed/);
  const paid=await reserve(await item(100));const order=await one('select * from payment_orders where reservation_id=$1',[paid.id]);
  const sync=(state,expiry=new Date(Date.now()+86400000).toISOString())=>one('select * from sync_pickup_payment($1,$2,$3,10000,$4,false,$5,$6,$7,0)',[order.id,'cs_'+order.id,'pi_'+order.id,'usd',state,expiry,new Date().toISOString()]);
  assert.equal((await sync('requires_capture')).status,'authorized');
+ await assert.rejects(db.query('select extend_pickup($1,$2,$3,null)',[paid.id,seller,new Date(Date.now()+48*3600000).toISOString()]),/card authorization/,'Contractor extensions cannot outlive card holds');
  const withdrawal=()=>one('select * from request_withdrawal($1,50,$2,$3,$4,$5,false)',[seller,'Test','Test account','',crypto.randomUUID()]);
  await assert.rejects(withdrawal(),/exceeds/,'Authorization is not earnings');
+ await assert.rejects(accept(paid.id),/contractor to confirm/);
+ await confirm(paid.id);
  await accept(paid.id);assert.equal((await sync('succeeded')).status,'paid');await sync('succeeded');
  await assert.rejects(withdrawal(),/exceeds/,'Payment is not withdrawable before handover');
  await collect(paid.id);assert.equal((await withdrawal()).status,'paid');
@@ -48,7 +66,7 @@ try{
  assert.equal((await one('select * from sync_pickup_payment($1,$2,$3,1000,$4,false,$5,null,now(),0)',[unexpectedOrder.id,'cs_unexpected','pi_unexpected','usd','succeeded'])).status,'refund_required','Cannot charge before inspection');
  await endPickup(unexpected.id);
  for(let n=0;n<2;n++){
-  const r=await reserve(await item());await db.query("update pickup_reservations set deadline=now()-interval '1 minute' where id=$1",[r.id]);await db.query('select expire_pickups()');
+  const r=await reserve(await item());await confirm(r.id);await db.query("update pickup_reservations set deadline=now()-interval '1 minute' where id=$1",[r.id]);await db.query('select expire_pickups()');
   const report=await one("insert into safety_reports(reporter_id,target_id,listing_id,reservation_id,reason,details) values($1,$2,$3,$4,'no_show','Buyer never arrived at the agreed window') returning id",[seller,buyer,r.listing_id,r.id]);
   if(n===0){const allowed=await reserve(await item());await endPickup(allowed.id);}
   await db.query("select review_safety_report($1,$2,'upheld','Confirmed after review')",[report.id,moderator]);
@@ -72,5 +90,6 @@ try{
  await assert.rejects(db.query('select * from local_listings(null,30,-97)'),/permission denied/);
  for(const table of ['pickup_reservations','pickup_waitlist','pickup_reviews','safety_reports'])await assert.rejects(db.query('select * from '+table),/permission denied/);
  await assert.rejects(db.query('select expire_pickups()'),/permission denied/);
+ await assert.rejects(confirm(p.id),/permission denied/);
  console.log('PASS: full pickup migration, free collection, party authorization, reservation limits, expiry/relisting/waitlist, contractor-approved extensions, manual authorization, no pre-inspection capture, no earnings before handover, reviewed no-show restrictions and reversal, private data.');
 }catch(e){console.error(e.message);process.exitCode=1;}finally{await db.close();}

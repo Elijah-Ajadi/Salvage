@@ -43,5 +43,7 @@ next-env.d.ts
 /.gemini/
 /.agents/
 
+DEVPOST.md
+DEVPOST-IMPLEMENTATION-NOTES.md
 /.pnpm-store/
 *.tsbuildinfo
