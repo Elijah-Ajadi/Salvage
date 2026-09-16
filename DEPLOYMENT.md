@@ -1,5 +1,15 @@
 # Deploy Salvage to Vercel — Step-by-Step Guide
 
+## Listing deletion
+
+Apply `202609160009_delete_listings.sql` before deploying the delete-listing UI:
+
+```bash
+node --env-file=.env scripts/upgrade-deletion.mjs
+```
+
+Only the owning contractor can delete an unclaimed listing. Active reservations, accepted/collected pickups, and unsettled payments prevent deletion. A cancelled reservation permits deletion once the item is available again. Deletion removes the listing from discovery and owner inventory, clears listing alerts and waitlist entries, and preserves historical receipts, donation details, and safety evidence. Deleted listings cannot be reopened through the donation endpoint. The migration and UI are implemented and tested locally; this change does not apply the migration to the hosted database.
+
 ## Contractor confirmation and interactive map
 
 Migration `202609150008_pickup_confirmation.sql` requires contractors to confirm new pickup windows before buyers can accept items. Contractors may also extend the end time while preserving the original arrival time. Both participants receive updates, and unconfirmed windows cannot be used for no-show reports. Existing reservations retain their previously agreed windows.

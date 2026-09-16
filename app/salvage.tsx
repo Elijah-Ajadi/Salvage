@@ -1,5 +1,6 @@
 'use client';
 import MaterialMap from '@/app/material-map';
+import DeleteListing from '@/app/delete-listing';
 import PickupUI,{ReserveForm,ReportForm} from '@/app/pickup-ui';
 import {hasCoordinates} from '@/lib/location';
 import { useEffect, useState, useRef } from 'react';
@@ -687,6 +688,7 @@ export default function Salvage({mode,initialAccount,initialView,receiptId}:{mod
      {!selected.demo&&selected.status==='reserved'&&!selected.mine&&!selected.claimedMine&&profile.role==='buyer'&&<button className="pickup-secondary" disabled={busy} onClick={async()=>{setBusy(true);try{const r=await fetch('/api/pickups',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'waitlist',listingId:selected.id})});const d=await r.json();if(!r.ok)throw Error(d.error);notify('You are on the waitlist. We will notify you in the app if this item becomes available.');}catch(e:any){notify(e.message);}finally{setBusy(false);}}}>Join waitlist</button>}
      {!selected.demo&&!selected.mine&&<ReportForm listingId={selected.id}/>}
      {selected.mine&&selected.status==='available'&&<button className="primary full" onClick={()=>setModal('donate')}><HeartHandshake size={19}/> Mark donated to nonprofit</button>}
+     {!selected.demo&&selected.mine&&['available','donated'].includes(selected.status)&&<DeleteListing id={selected.id} title={selected.title} onDeleted={()=>{const id=selected.id;setItems(items=>items.filter(item=>item.id!==id));setSelected(null);notify('Listing deleted.');}}/>}
      {selected.status!=='available'&&<div style={{display:'flex',flexDirection:'column',gap:'10px',marginTop:'10px'}}>
        <p className="ai-note"><Check size={17}/> {selected.status==='reserved'?'Reserved — manage the pickup on your receipt.':selected.status==='claimed'?'Collected / claimed — view your receipt.':'Donated — another life made possible.'}</p>
        {selected.claimedMine&&<button className="primary full" style={{background:'#f3f7ee',color:'#395826',borderColor:'#c4d5b9'}} onClick={()=>showBuyerReceipt(selected)}>

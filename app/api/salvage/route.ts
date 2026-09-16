@@ -1,4 +1,4 @@
-import {rpc} from '@/lib/pickups';
+import {rpc,validId} from '@/lib/pickups';
 import {hasCoordinates} from '@/lib/location';
 import {getUser} from '@/lib/auth';
 import {admin} from '@/lib/supabase/server';
@@ -172,6 +172,13 @@ export async function POST(req:Request){try{
     return fail(`Could not publish your listing: ${error.message}`,503);
   }
   return Response.json({id});
+ }
+ if(action==='delete'){
+  if(p.role!=='contractor')return fail('Only contractors can delete listings.',403);
+  if(!validId(body.id))return fail('Invalid listing.');
+  try{await rpc('delete_listing',{p_listing:body.id,p_contractor:user.userId});}
+  catch(error){return fail(error instanceof Error?error.message:'Could not delete the listing.',409);}
+  return Response.json({ok:true});
  }
  if(action==='claim')return fail('Choose a pickup window using Reserve pickup.',409);
  if(action==='donate'){
